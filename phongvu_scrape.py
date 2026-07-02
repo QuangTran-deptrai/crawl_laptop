@@ -58,6 +58,7 @@ def crawl_phongvu_to_excel():
     
     options = uc.ChromeOptions()
     options.add_argument("--start-maximized")
+    options.add_argument('--window-size=1920,1080')
     # Xử lý lỗi lệch version giữa Chrome cài sẵn trên server và ChromeDriver tải về
     try:
         driver = uc.Chrome(options=options)
@@ -81,25 +82,32 @@ def crawl_phongvu_to_excel():
             raise e
             
     try:
-        driver.get(SEARCH_URL)
+        from selenium.webdriver.common.by import By
+        from selenium.webdriver.common.action_chains import ActionChains
         
-        # Chờ Cloudflare Turnstile (nếu có) xử lý
-        print("Đang kiểm tra Cloudflare...")
-        for _ in range(15):
-            if "Just a moment" in driver.title or "Cloudflare" in driver.title:
-                time.sleep(2)
-                try:
-                    # Nếu có iframe Turnstile bắt click, thử click vào
-                    iframe = driver.find_element(By.TAG_NAME, "iframe")
-                    driver.switch_to.frame(iframe)
-                    cb = driver.find_element(By.TAG_NAME, "input") # input checkbox
-                    if cb:
-                        driver.execute_script("arguments[0].click();", cb)
-                    driver.switch_to.default_content()
-                except Exception:
-                    driver.switch_to.default_content()
-            else:
-                break
+        # Thử tối đa 3 lần tải lại trang nếu bị kẹt ở Cloudflare
+        for attempt in range(3):
+            driver.get(SEARCH_URL)
+            print(f"Đang kiểm tra Cloudflare (lần thử {attempt + 1})...")
+            
+            for _ in range(12):
+                if "Just a moment" in driver.title or "Cloudflare" in driver.title:
+                    time.sleep(2)
+                    try:
+                        iframe = driver.find_element(By.TAG_NAME, "iframe")
+                        driver.switch_to.frame(iframe)
+                        cb = driver.find_element(By.TAG_NAME, "input")
+                        if cb:
+                            # Dùng ActionChains để click mô phỏng chuột thật thay vì Javascript
+                            ActionChains(driver).move_to_element(cb).click().perform()
+                        driver.switch_to.default_content()
+                    except Exception:
+                        driver.switch_to.default_content()
+                else:
+                    break
+                    
+            if "Just a moment" not in driver.title and "Cloudflare" not in driver.title:
+                break # Đã vượt qua thành công
                 
         time.sleep(5)
         

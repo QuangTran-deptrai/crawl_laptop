@@ -98,7 +98,7 @@ def crawl_phongvu_to_excel():
             time.sleep(2)
             
             # Đếm sản phẩm hiện có
-            current_count = driver.execute_script("return document.querySelectorAll('.css-1y2krk0 .product-card a, .css-1jrdcrk .product-card a, .product-card a').length")
+            current_count = driver.execute_script("return document.querySelectorAll('a[href*=\"-s\"]').length")
             
             if current_count == last_count:
                 clicked = False
@@ -141,10 +141,10 @@ def crawl_phongvu_to_excel():
                     print(f"    >> Đã bấm 'Xem thêm' lần {load_more_count}")
                     time.sleep(5) 
                     
-                    new_count = driver.execute_script("return document.querySelectorAll('.css-1y2krk0 .product-card a, .css-1jrdcrk .product-card a, .product-card a').length")
+                    new_count = driver.execute_script("return document.querySelectorAll('a[href*=\"-s\"]').length")
                     if new_count <= current_count:
                         time.sleep(3)
-                        new_count = driver.execute_script("return document.querySelectorAll('.css-1y2krk0 .product-card a, .css-1jrdcrk .product-card a, .product-card a').length")
+                        new_count = driver.execute_script("return document.querySelectorAll('a[href*=\"-s\"]').length")
                         if new_count <= current_count:
                             break
                     current_count = new_count

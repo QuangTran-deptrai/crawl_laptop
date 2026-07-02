@@ -18,7 +18,13 @@ if __name__ == "__main__":
             if match:
                 version = int(match.group(1))
                 print(f"-> Đã phát hiện Chrome version {version}. Đang thử lại với version_main={version}...")
-                driver = uc.Chrome(options=options, version_main=version)
+                
+                # BẮT BUỘC TẠO LẠI OPTIONS VÌ UC KHÔNG CHO PHÉP TÁI SỬ DỤNG
+                options2 = uc.ChromeOptions()
+                options2.add_argument('--no-sandbox') 
+                options2.add_argument('--disable-dev-shm-usage')
+                
+                driver = uc.Chrome(options=options2, version_main=version)
             else:
                 raise e
         else:

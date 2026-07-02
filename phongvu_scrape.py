@@ -159,22 +159,19 @@ def crawl_phongvu_to_excel():
         soup = BeautifulSoup(html, "html.parser")
         product_links = []
         
-        card_selectors = ['.css-1y2krk0', '.css-1jrdcrk']
-        for selector in card_selectors:
-            containers = soup.select(selector)
-            for container in containers:
-                a_tags = container.select('.product-card a')
-                for a_tag in a_tags:
-                    href = a_tag.get("href")
-                    if href:
-                        full_link = urllib.parse.urljoin("https://phongvu.vn", href)
-                        if full_link not in product_links:
-                            product_links.append(full_link)
-                            
+        # Bắt tất cả thẻ <a> có link chứa "-s" (mã SKU của Phong Vũ) và liên quan đến laptop
+        for a_tag in soup.find_all("a", href=True):
+            href = a_tag["href"]
+            if "-s" in href and ("laptop" in href.lower() or "apple-macbook" in href.lower()):
+                full_link = urllib.parse.urljoin("https://phongvu.vn", href)
+                if full_link not in product_links:
+                    product_links.append(full_link)
+        
+        # Nếu vẫn không thấy, thử tìm tất cả link trong các thẻ div có class chứa 'product'
         if not product_links:
-            for a_tag in soup.select('.product-card a'):
-                href = a_tag.get("href")
-                if href:
+            for div in soup.find_all("div", class_=lambda c: c and "product" in c.lower()):
+                for a_tag in div.find_all("a", href=True):
+                    href = a_tag["href"]
                     full_link = urllib.parse.urljoin("https://phongvu.vn", href)
                     if full_link not in product_links:
                         product_links.append(full_link)

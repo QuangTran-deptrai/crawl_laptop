@@ -58,7 +58,7 @@ def crawl_fptshop_to_excel():
         else:
             raise e
             
-    try:
+    if True:
         print("=== [LEVEL 0] ĐANG QUÉT TRANG TÌM KIẾM FPT SHOP ===")
         driver.get(SEARCH_URL)
         time.sleep(4)

@@ -1,60 +1,91 @@
-name: Daily Laptop Data Scraper
+name: Daily Laptop Data Scraper (Parallel)
 
 on:
   schedule:
-    - cron: '0 0 * * *' # Chạy vào 00:00 UTC (7h00 sáng VN) mỗi ngày
-  workflow_dispatch: # Nút nhấn chạy thủ công
+    - cron: '0 0 * * *' # 7h sáng VN
+  workflow_dispatch:
+
+env:
+  PYTHONUNBUFFERED: "1" # Ép Python in log ra ngay lập tức để không bị tưởng là treo
 
 jobs:
-  scrape-and-commit:
+  scrape:
+    name: Cào dữ liệu ${{ matrix.script }}
     runs-on: ubuntu-latest
-    permissions:
-      contents: write # Cho phép GitHub Actions push code mới lên repo
+    strategy:
+      fail-fast: false # Đừng huỷ các tiến trình khác nếu có 1 web bị lỗi
+      matrix:
+        script: 
+          - fptshop_scrape.py
+          - tgdd_scrape.py
+          - cellphones_scrape.py
+          - phongvu_scrape.py
+          - gearvn_scrape.py
 
     steps:
-      - name: Checkout code
+      - name: Lấy mã nguồn
         uses: actions/checkout@v4
 
-      - name: Setup Python environment
+      - name: Cài đặt Python 3.11
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-          cache: 'pip' # Lưu cache pip để các lần chạy sau cài đặt nhanh hơn
+          cache: 'pip'
 
-      - name: Install dependencies
+      - name: Cài đặt thư viện Python
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Install Playwright & Patchright Chromium
+      - name: Cài đặt Playwright & Patchright Chromium
         run: |
           playwright install chromium
           patchright install chromium
 
-      - name: Install xvfb (X virtual framebuffer)
+      - name: Cài đặt màn hình ảo (Xvfb)
         run: sudo apt-get update && sudo apt-get install -y xvfb
 
-      - name: Run FPT Shop Scraper
-        continue-on-error: true
-        run: xvfb-run python fptshop_scrape.py
+      - name: Chạy script cào dữ liệu
+        continue-on-error: true # Cho phép lỗi (ví dụ không tìm thấy element) để không sập workflow
+        run: xvfb-run python ${{ matrix.script }}
 
-      - name: Run The Gioi Di Dong Scraper
-        continue-on-error: true
-        run: xvfb-run python tgdd_scrape.py
+      - name: Tải file Excel lên bộ nhớ tạm
+        uses: actions/upload-artifact@v4
+        with:
+          name: excel-data-${{ matrix.script }}
+          path: '*.xlsx'
+          if-no-files-found: ignore
+          retention-days: 1 # Chỉ lưu 1 ngày để dọn rác
 
-      - name: Run CellphoneS Scraper
-        continue-on-error: true
-        run: xvfb-run python cellphones_scrape.py
+  sync:
+    name: Đồng bộ dữ liệu & Báo cáo
+    needs: scrape # Đảm bảo job này chỉ chạy khi 5 máy ảo trên kia đã chạy xong
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # Cấp quyền cho lệnh push lên Github
 
-      - name: Run Phong Vu Scraper
-        continue-on-error: true
-        run: xvfb-run python phongvu_scrape.py
+    steps:
+      - name: Lấy mã nguồn
+        uses: actions/checkout@v4
 
-      - name: Run GearVN Scraper
-        continue-on-error: true
-        run: xvfb-run python gearvn_scrape.py
+      - name: Cài đặt Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
 
-      - name: Sync to Google Sheets and Send Telegram Report
+      - name: Cài đặt thư viện Python
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Tải 5 file Excel từ bộ nhớ tạm về máy ảo này
+        uses: actions/download-artifact@v4
+        with:
+          pattern: excel-data-*
+          merge-multiple: true # Gộp chung tất cả file xlsx vào cùng 1 thư mục hiện tại
+
+      - name: Đẩy lên Google Sheets và Báo cáo Telegram
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -62,13 +93,13 @@ jobs:
           GOOGLE_SHEETS_WEBHOOK_URL: ${{ secrets.GOOGLE_SHEETS_WEBHOOK_URL }}
         run: python sync_excel_to_sheets.py
 
-      - name: Commit and push changes
+      - name: Đẩy file Excel lưu trữ lên Github Repo
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
           
-          # Lấy danh sách các file excel mới và thêm vào repo
-          git add -f laptop_fptshop_all.xlsx laptop_tgdd_all.xlsx laptop_cellphones_all.xlsx laptop_phongvu_all.xlsx laptop_gearvn_all.xlsx
+          # Force add tất cả file xlsx tải về
+          git add -f *.xlsx
           
-          # Kiểm tra xem có thay đổi mới không, nếu có thì commit và push
-          git diff --quiet && git diff --staged --quiet || (git commit -m "Auto-update: Cập nhật dữ liệu Laptop mới nhất [skip ci]" && git push)
+          # Chỉ commit nếu có sự thay đổi
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Auto-update: Cập nhật dữ liệu Laptop mới nhất chạy song song [skip ci]" && git push)

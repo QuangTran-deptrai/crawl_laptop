@@ -2,11 +2,26 @@ import time
 import urllib.parse
 from bs4 import BeautifulSoup
 import pandas as pd
+from datetime import datetime
 import undetected_chromedriver as uc
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, ElementClickInterceptedException
+
+def calculate_discount(current_price, original_price, scraped_discount=""):
+    if scraped_discount and str(scraped_discount).strip():
+        return str(scraped_discount).strip()
+    try:
+        import re
+        c = int(re.sub(r'[^\d]', '', str(current_price)))
+        o = int(re.sub(r'[^\d]', '', str(original_price)))
+        if o > c and o > 0:
+            percent = round((o - c) / o * 100)
+            return f"-{percent}%"
+    except Exception:
+        pass
+    return ""
 
 SEARCH_URL = "https://phongvu.vn/c/laptop"
 TEST_MODE = False
@@ -278,12 +293,13 @@ def crawl_phongvu_to_excel():
                 
                 print(f"    ✓ Đã lấy: {name}")
                 final_results.append({
-                    "Tên sản phẩm": name,
-                    "Giá bán": price,
-                    "Giá gốc": original_price,
-                    "Khuyến mãi": promo_text,
-                    "Cấu hình": specs.strip(),
-                    "Link": link
+                    "Tên Sản Phẩm": name,
+                    "Giá Hiện Tại": price,
+                    "Giá Gốc": original_price,
+                    "Giảm Giá": calculate_discount(price, original_price, ""),
+                    "Khuyến Mãi": promo_text,
+                    "Cấu Hình Chi Tiết": specs.strip(),
+                    "Link Sản Phẩm": link
                 })
             except Exception as e:
                 print(f"    x Lỗi khi xử lý {link}: {e}")

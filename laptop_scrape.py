@@ -4,33 +4,9 @@ import time
 from patchright.sync_api import sync_playwright
 from scrapling.parser import Adaptor
 
-# Cấu hình URL hệ thống GearVN — crawl nhiều trang collection
-COLLECTION_URLS = [
-    "https://gearvn.com/collections/laptop-gaming-gia-tu-20-den-25-trieu",
-    "https://gearvn.com/collections/laptop-gaming-ban-chay",
-    "https://gearvn.com/collections/laptop-gaming-gia-tu-25-den-35-trieu",
-    "https://gearvn.com/collections/laptop-gaming-tren-35-trieu",
-    "https://gearvn.com/collections/laptop-van-phong-ban-chay",
-    "https://gearvn.com/collections/laptop-hoc-tap-va-lam-viec-duoi-15tr",
-    "https://gearvn.com/collections/laptop-hoc-tap-va-lam-viec-tu-15tr-den-20tr",
-    "https://gearvn.com/collections/laptop-hoc-tap-va-lam-viec-tren-20-trieu"
-]
+# Cấu hình URL hệ thống
+SEARCH_URL = "https://gearvn.com/search?q=laptop%20gaming%20rtx%203050"
 BASE_URL = "https://gearvn.com"
-SEARCH_URL = "https://gearvn.com/collections/laptop"
-
-def calculate_discount(current_price, original_price, scraped_discount=""):
-    if scraped_discount and str(scraped_discount).strip():
-        return str(scraped_discount).strip()
-    try:
-        import re
-        c = int(re.sub(r'[^\d]', '', str(current_price)))
-        o = int(re.sub(r'[^\d]', '', str(original_price)))
-        if o > c and o > 0:
-            percent = round((o - c) / o * 100)
-            return f"-{percent}%"
-    except Exception:
-        pass
-    return ""
 
 def close_popup(page):
     """Đóng popup quảng cáo nếu xuất hiện — thử nhiều lần."""
@@ -69,79 +45,75 @@ def close_popup(page):
         time.sleep(2)
 
 def crawl_laptop_gearvn_to_excel():
-    print("=== [LEVEL 0] ĐANG QUÉT CÁC TRANG COLLECTION GEARVN ===")
+    print("=== [LEVEL 0] ĐANG QUÉT TRANG TÌM KIẾM ĐỂ LẤY LINK PRODUCT ===")
     
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=False)
-        context = browser.new_context(viewport={"width": 1920, "height": 1080})
+        context = browser.new_context()
         page = context.new_page()
         
-        # Lặp qua từng trang collection để gom link sản phẩm
+        # Truy cập trang tìm kiếm
+        page.goto(SEARCH_URL, wait_until="domcontentloaded")
+        
+        # Đóng popup quảng cáo nếu có
+        time.sleep(3)
+        close_popup(page)
+        
+        # Chờ sản phẩm load xong
+        try:
+            page.wait_for_selector('.proloop-name a', timeout=15000)
+        except Exception:
+            print("    ! Timeout chờ sản phẩm load.")
+        
+        time.sleep(2)
+        
+        # Bấm nút "Xem thêm sản phẩm" để load hết tất cả sản phẩm
+        load_more_count = 0
+        while True:
+            try:
+                load_more_btn = page.locator('#load_more_search')
+                if load_more_btn.count() == 0 or not load_more_btn.is_visible():
+                    break
+                
+                # Cuộn trang xuống để nút hiện ra
+                load_more_btn.scroll_into_view_if_needed()
+                time.sleep(0.5)
+                load_more_btn.click()
+                load_more_count += 1
+                print(f"    >> Đã bấm 'Xem thêm sản phẩm' lần {load_more_count}, đang chờ load...")
+                time.sleep(3)
+            except Exception:
+                break
+        
+        if load_more_count > 0:
+            print(f"    >> Đã load thêm {load_more_count} lần.")
+        
+        time.sleep(1)
+        
+        # Parse HTML bằng Adaptor của scrapling
+        html_content = page.content()
+        search_page = Adaptor(html_content, url=SEARCH_URL)
+        product_blocks = search_page.css('.proloop-block')
+        
+        # Lấy TẤT CẢ link sản phẩm (không lọc theo tên ở trang search)
+        # Vì tên laptop không chứa "3050", cần vào trang chi tiết để kiểm tra card đồ họa
         product_links = []
         
-        for col_index, collection_url in enumerate(COLLECTION_URLS, start=1):
-            print(f"\n--- [{col_index}/{len(COLLECTION_URLS)}] Đang quét: {collection_url} ---")
+        for block in product_blocks:
+            name_at_search = block.css('.proloop-name a::text').get(default="").strip()
             
-            page.goto(collection_url, wait_until="domcontentloaded")
+            # Chỉ lấy sản phẩm là Laptop (bỏ qua Card màn hình, phụ kiện, v.v.)
+            if not name_at_search or not name_at_search.lower().startswith("laptop"):
+                continue
             
-            # Đóng popup quảng cáo nếu có
-            time.sleep(3)
-            close_popup(page)
-            
-            # Chờ sản phẩm load xong
-            try:
-                page.wait_for_selector('.proloop-name a', timeout=15000)
-            except Exception:
-                print("    ! Timeout chờ sản phẩm load.")
-            
-            time.sleep(2)
-            
-            # Bấm nút "Xem thêm sản phẩm" để load hết tất cả sản phẩm
-            load_more_count = 0
-            while True:
-                try:
-                    load_more_btn = page.locator('#load_more, #load_more_search')
-                    if load_more_btn.count() == 0 or not load_more_btn.first.is_visible():
-                        break
+            relative_link = block.css('.proloop-name a::attr(href)').get(default="")
+            if relative_link:
+                full_link = BASE_URL + relative_link if relative_link.startswith('/') else relative_link
+                if full_link not in product_links:
+                    product_links.append(full_link)
                     
-                    load_more_btn.first.scroll_into_view_if_needed()
-                    time.sleep(0.5)
-                    load_more_btn.first.click()
-                    load_more_count += 1
-                    print(f"    >> Đã bấm 'Xem thêm sản phẩm' lần {load_more_count}, đang chờ load...")
-                    time.sleep(3)
-                except Exception:
-                    break
-            
-            if load_more_count > 0:
-                print(f"    >> Đã load thêm {load_more_count} lần.")
-            
-            time.sleep(1)
-            
-            # Parse HTML bằng Adaptor
-            html_content = page.content()
-            search_page = Adaptor(html_content, url=collection_url)
-            product_blocks = search_page.css('.proloop-block')
-            
-            count_new = 0
-            for block in product_blocks:
-                name_at_search = block.css('.proloop-name a::text').get(default="").strip()
-                
-                # Chỉ lấy sản phẩm là Laptop
-                if not name_at_search or not name_at_search.lower().startswith("laptop"):
-                    continue
-                
-                relative_link = block.css('.proloop-name a::attr(href)').get(default="")
-                if relative_link:
-                    full_link = BASE_URL + relative_link if relative_link.startswith('/') else relative_link
-                    if full_link not in product_links:
-                        product_links.append(full_link)
-                        count_new += 1
-            
-            print(f"    --> Tìm thấy {count_new} link mới (tổng: {len(product_links)})")
-        
-        print(f"\n=== TỔNG CỘNG: {len(product_links)} link laptop (đã loại trùng) ===")
-        print("\n=== [LEVEL 1] TRUY CẬP TỪNG LINK ĐỂ LẤY THÔNG TIN CHI TIẾT ===")
+        print(f"--> Tìm thấy {len(product_links)} link laptop từ trang tìm kiếm.")
+        print("\n=== [LEVEL 1] TRUY CẬP TỪNG LINK ĐỂ KIỂM TRA CÓ RTX 3050 KHÔNG ===")
         
         final_results = []
         
@@ -164,20 +136,8 @@ def crawl_laptop_gearvn_to_excel():
                 except Exception:
                     print(f"    ! Timeout chờ .product-info tại {url}")
                 
-                # Chờ thêm để trang load xong
+                # Chờ thêm để bảng specs load xong
                 time.sleep(2)
-                
-                # Cuộn xuống và click nút "Đọc tiếp bài viết" để mở rộng bảng cấu hình
-                try:
-                    expand_btn = page.locator('button.expandable-btn')
-                    if expand_btn.count() > 0 and expand_btn.first.is_visible():
-                        expand_btn.first.scroll_into_view_if_needed()
-                        time.sleep(0.5)
-                        expand_btn.first.click()
-                        time.sleep(1.5)
-                        print(f"    >> Đã click 'Đọc tiếp bài viết'")
-                except Exception:
-                    pass
                 
                 # Chờ phần khuyến mãi load xong (được inject bằng JS bên ngoài)
                 try:
@@ -191,7 +151,7 @@ def crawl_laptop_gearvn_to_excel():
                 
                 time.sleep(1)
                 
-                # Parse HTML (sau khi đã mở rộng bài viết)
+                # Parse HTML
                 prod_html = page.content()
                 prod_page = Adaptor(prod_html, url=url)
                 info_block = prod_page.css('.product-info')
@@ -200,32 +160,31 @@ def crawl_laptop_gearvn_to_excel():
                     print(f"    ! Không tìm thấy .product-info tại {url}")
                     continue
                 
-                # --- LẤY CẤU HÌNH CHI TIẾT TỪ BẢNG #tblGeneralAttribute ---
+                # --- KIỂM TRA CARD ĐỒ HỌA CÓ RTX 3050 KHÔNG ---
                 specs_dict = {}
-                spec_rows = prod_page.css('#tblGeneralAttribute tr')
+                spec_rows = prod_page.css('#gvn-specs-container-table tr.gvn-spec-row')
                 
+                has_rtx3050 = False
                 for row in spec_rows:
-                    tds = row.css('td')
-                    if len(tds) >= 2:
-                        # Cột 1: tên thông số (nằm trong <strong> hoặc text trực tiếp)
-                        key = " ".join(tds[0].css('*::text').getall()).strip()
-                        # Cột 2: giá trị thông số
-                        val = " ".join(tds[1].css('*::text').getall()).strip()
-                        
-                        if key and val:
-                            specs_dict[key] = val
+                    if row.css('th[colspan]'):
+                        continue
+                    
+                    key = row.css('th::text').get(default="").strip()
+                    # Lấy toàn bộ text trong td (bao gồm cả trong thẻ con)
+                    val_parts = row.css('td::text').getall()
+                    val = " ".join([v.strip() for v in val_parts if v.strip()])
+                    
+                    if key and val:
+                        specs_dict[key] = val
+                    
+                    # Kiểm tra card đồ họa
+                    if "card" in key.lower() or "đồ họa" in key.lower() or "vga" in key.lower() or "gpu" in key.lower():
+                        if "3050" in val:
+                            has_rtx3050 = True
                 
-                # Fallback: nếu không có #tblGeneralAttribute, thử lấy từ bảng specs sidebar cũ
-                if not specs_dict:
-                    spec_rows_fallback = prod_page.css('#gvn-specs-container-table tr.gvn-spec-row')
-                    for row in spec_rows_fallback:
-                        if row.css('th[colspan]'):
-                            continue
-                        key = row.css('th::text').get(default="").strip()
-                        val_parts = row.css('td::text').getall()
-                        val = " ".join([v.strip() for v in val_parts if v.strip()])
-                        if key and val:
-                            specs_dict[key] = val
+                if not has_rtx3050:
+                    print(f"    → Bỏ qua: Không có RTX 3050")
+                    continue
                 
                 # 1. Tên sản phẩm
                 product_name = info_block.css('.product-name h1::text').get(default="").strip()
@@ -237,8 +196,7 @@ def crawl_laptop_gearvn_to_excel():
                 original_price = info_block.css('.product-price del::text').get(default="").strip()
                 
                 # 4. Phần trăm giảm giá
-                discount_percent = info_block.css('.product-price .pro-percent::text, .product-price .product-discount::text').get(default="").strip()
-                discount_percent = calculate_discount(current_price, original_price, discount_percent)
+                discount_percent = info_block.css('.product-price .pro-percent::text').get(default="").strip()
                 
                 # 5. Khuyến mãi (hỗ trợ cả 2 cấu trúc)
                 promo_list = []
@@ -272,6 +230,7 @@ def crawl_laptop_gearvn_to_excel():
                     pass
                 
                 # 6. Mô tả ngắn / quà tặng bổ sung từ .product-desc-short
+                desc_short_parts = info_block.css('.product-desc-short::text').getall()
                 desc_short_all = info_block.css('.product-desc-short *::text').getall()
                 desc_short = " | ".join([t.strip() for t in desc_short_all if t.strip()])
                 
@@ -294,7 +253,7 @@ def crawl_laptop_gearvn_to_excel():
                 }
                 
                 final_results.append(laptop_data)
-                print(f"    ✓ Đã lấy: {product_name}")
+                print(f"    ✓ RTX 3050 - Đã lấy: {product_name}")
                 
                 # Delay giữa các sản phẩm
                 time.sleep(1.5)
@@ -305,13 +264,13 @@ def crawl_laptop_gearvn_to_excel():
         # Đóng trình duyệt
         browser.close()
             
-    # --- XỬ LÝ XUẤT FILE EXCEL ---
+    # --- XỬ LÝ XUẤT FILE EXCEL BẰNG PANDAS ---
     if final_results:
-        output_file = "laptop_gearvn_all.xlsx"
+        output_file = "laptop_rtx3050_gearvn.xlsx"
         
         df = pd.DataFrame(final_results)
         df.to_excel(output_file, index=False, engine='openpyxl')
-        print(f"\n=== HOÀN THÀNH! Đã lưu {len(final_results)} laptop vào '{output_file}' ===")
+        print(f"\n=== HOÀN THÀNH! Đã lưu {len(final_results)} laptop RTX 3050 vào '{output_file}' ===")
     else:
         print("\nKhông thu thập được dữ liệu nào hợp lệ để xuất file.")
 

@@ -6,6 +6,20 @@ from scrapling.parser import Adaptor
 BASE_URL = "https://fptshop.com.vn"
 SEARCH_URL = "https://fptshop.com.vn/may-tinh-xach-tay"
 
+def calculate_discount(current_price, original_price, scraped_discount=""):
+    if scraped_discount and str(scraped_discount).strip():
+        return str(scraped_discount).strip()
+    try:
+        import re
+        c = int(re.sub(r'[^\d]', '', str(current_price)))
+        o = int(re.sub(r'[^\d]', '', str(original_price)))
+        if o > c and o > 0:
+            percent = round((o - c) / o * 100)
+            return f"-{percent}%"
+    except Exception:
+        pass
+    return ""
+
 import undetected_chromedriver as uc
 
 def close_popup(driver):
@@ -216,6 +230,7 @@ def crawl_fptshop_to_excel():
                     "Tên Sản Phẩm": product_name,
                     "Giá Hiện Tại": current_price,
                     "Giá Gốc": original_price,
+                    "Giảm Giá": calculate_discount(current_price, original_price, ""),
                     "Khuyến Mãi": promo_string,
                     "Cấu Hình Chi Tiết": specs_string,
                     "URL": url,

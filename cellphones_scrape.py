@@ -4,8 +4,22 @@ import time
 from patchright.sync_api import sync_playwright
 from scrapling.parser import Adaptor
 
-SEARCH_URL = "https://cellphones.com.vn/laptop.html"
 BASE_URL = "https://cellphones.com.vn"
+SEARCH_URL = "https://cellphones.com.vn/laptop.html"
+
+def calculate_discount(current_price, original_price, scraped_discount=""):
+    if scraped_discount and str(scraped_discount).strip():
+        return str(scraped_discount).strip()
+    try:
+        import re
+        c = int(re.sub(r'[^\d]', '', str(current_price)))
+        o = int(re.sub(r'[^\d]', '', str(original_price)))
+        if o > c and o > 0:
+            percent = round((o - c) / o * 100)
+            return f"-{percent}%"
+    except Exception:
+        pass
+    return ""
 
 def close_popup(page):
     try:
@@ -177,6 +191,7 @@ def crawl_cellphones_to_excel():
                 current_price = prod_page.css('.box-info__box-price .product__price--show::text, .box-product-price-wrapper .sale-price::text, .box-product-price-wrapper .product__price--show::text').get(default="").strip()
                 original_price = prod_page.css('.box-info__box-price .product__price--through::text, .box-product-price-wrapper .base-price::text, .box-product-price-wrapper .product__price--through::text').get(default="").strip()
                 discount_percent = prod_page.css('.box-info__box-price .product__price--percent-detail span::text').get(default="").strip()
+                discount_percent = calculate_discount(current_price, original_price, discount_percent)
                 
                 # 4. Khuyến mãi
                 promo_list = []

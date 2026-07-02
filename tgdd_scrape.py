@@ -8,6 +8,20 @@ from scrapling.parser import Adaptor
 SEARCH_URL = "https://www.thegioididong.com/laptop"
 BASE_URL = "https://www.thegioididong.com"
 
+def calculate_discount(current_price, original_price, scraped_discount=""):
+    if scraped_discount and str(scraped_discount).strip():
+        return str(scraped_discount).strip()
+    try:
+        import re
+        c = int(re.sub(r'[^\d]', '', str(current_price)))
+        o = int(re.sub(r'[^\d]', '', str(original_price)))
+        if o > c and o > 0:
+            percent = round((o - c) / o * 100)
+            return f"-{percent}%"
+    except Exception:
+        pass
+    return ""
+
 def close_popup(page):
     """Đóng popup quảng cáo hoặc thông báo nếu xuất hiện."""
     try:
@@ -185,14 +199,8 @@ def crawl_tgdd_to_excel():
                 if not original_price:
                     original_price = prod_page.css('.price-old::text').get(default="").strip()
                     
-                discount_percent = ""
-                try:
-                    c_price = float(current_price.replace('₫', '').replace('.', '').replace(',', '').strip())
-                    o_price = float(original_price.replace('₫', '').replace('.', '').replace(',', '').strip())
-                    if o_price > 0 and c_price < o_price:
-                        discount_percent = f"-{int(round((o_price - c_price) / o_price * 100))}%"
-                except:
-                    pass
+                discount_percent = prod_page.css('.percent::text, .box-price-percent::text').get(default="").strip()
+                discount_percent = calculate_discount(current_price, original_price, discount_percent)
                 
                 # 4. Khuyến mãi (TGDĐ thường nằm trong .divb-right)
                 promo_list = []

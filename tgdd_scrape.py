@@ -241,6 +241,13 @@ def crawl_tgdd_to_excel():
                 
             except Exception as e:
                 print(f"    ! Gặp lỗi khi xử lý link {url}: {e}")
+                # Phục hồi (Reset) lại tab trình duyệt nếu trang trước đó bị lỗi Timeout hoặc ngắt kết nối
+                try:
+                    page.close()
+                    page = context.new_page()
+                    context.on("page", lambda p: p.close() if p != page else None)
+                except Exception:
+                    pass
         
         browser.close()
             

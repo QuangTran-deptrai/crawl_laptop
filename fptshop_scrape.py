@@ -1,47 +1,66 @@
 import time
 import pandas as pd
 from datetime import datetime
-from patchright.sync_api import sync_playwright
 from scrapling.parser import Adaptor
 
 BASE_URL = "https://fptshop.com.vn"
 SEARCH_URL = "https://fptshop.com.vn/may-tinh-xach-tay"
 
-def close_popup(page):
+import undetected_chromedriver as uc
+
+def close_popup(driver):
     try:
-        page.evaluate('''() => {
+        driver.execute_script('''
             document.querySelectorAll('iframe, video').forEach(el => el.remove());
             document.querySelectorAll('.cancel-button, .close-modal, .insider-opt-in-notification-button').forEach(el => el.click());
-        }''')
+        ''')
         time.sleep(0.5)
     except Exception:
         pass
 
 def crawl_fptshop_to_excel():
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=False, args=["--mute-audio"])
-        context = browser.new_context(
-            viewport={"width": 1366, "height": 768},
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
-        )
-        page = context.new_page()
-        context.on("page", lambda p: p.close() if p != page else None)
-        
+    print("Khởi tạo undetected_chromedriver cho FPT Shop...")
+    options = uc.ChromeOptions()
+    options.add_argument('--no-sandbox')
+    options.add_argument('--disable-dev-shm-usage')
+    options.add_argument('--mute-audio')
+    
+    try:
+        driver = uc.Chrome(options=options)
+    except Exception as e:
+        error_msg = str(e)
+        if "This version of ChromeDriver only supports Chrome version" in error_msg:
+            import re
+            match = re.search(r"Current browser version is (\d+)", error_msg)
+            if match:
+                version = int(match.group(1))
+                options2 = uc.ChromeOptions()
+                options2.add_argument('--no-sandbox')
+                options2.add_argument('--disable-dev-shm-usage')
+                options2.add_argument('--mute-audio')
+                driver = uc.Chrome(options=options2, version_main=version)
+            else:
+                raise e
+        else:
+            raise e
+            
+    try:
         print("=== [LEVEL 0] ĐANG QUÉT TRANG TÌM KIẾM FPT SHOP ===")
-        page.goto(SEARCH_URL, wait_until="domcontentloaded")
+        driver.get(SEARCH_URL)
         time.sleep(4)
-        close_popup(page)
+        print(f"Tiêu đề trang: {driver.title}")
+        close_popup(driver)
         
         print("    >> Đang tải tất cả sản phẩm (bấm Xem thêm)...")
         load_more_count = 0
         retry_count = 0
         while True:
-            page.evaluate("window.scrollBy(0, 1000);")
+            driver.execute_script("window.scrollBy(0, 1000);")
             time.sleep(1)
-            page.evaluate("window.scrollBy(0, 1000);")
+            driver.execute_script("window.scrollBy(0, 1000);")
             time.sleep(2)
             
-            clicked = page.evaluate('''() => {
+            clicked = driver.execute_script('''
                 // FPT Shop có nhiều nút xem thêm, nút mở rộng sản phẩm thường kèm chữ "kết quả" hoặc "sản phẩm"
                 let btns = document.querySelectorAll('button');
                 for (let btn of btns) {
@@ -52,7 +71,7 @@ def crawl_fptshop_to_excel():
                     }
                 }
                 return false;
-            }''')
+            ''')
                 
             if clicked:
                 load_more_count += 1
@@ -69,10 +88,10 @@ def crawl_fptshop_to_excel():
             
         # Cuộn thêm vài lần để đảm bảo render hết toàn bộ thẻ
         for _ in range(5):
-            page.evaluate("window.scrollBy(0, 1000);")
+            driver.execute_script("window.scrollBy(0, 1000);")
             time.sleep(1)
         
-        html_content = page.content()
+        html_content = driver.page_source
         search_page = Adaptor(html_content, url=SEARCH_URL)
         
         # FPT Shop có thể chứa sản phẩm trong nhiều class khác nhau, lấy tất cả a tag có link laptop
@@ -103,36 +122,43 @@ def crawl_fptshop_to_excel():
             try:
                 crawl_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 
-                page.goto(url, wait_until="domcontentloaded")
+                driver.get(url)
                 time.sleep(4)
-                close_popup(page)
+                close_popup(driver)
                 
                 # Cuộn trang sâu hơn để hiển thị bảng thông số
-                page.evaluate("window.scrollBy(0, 1000);")
+                driver.execute_script("window.scrollBy(0, 1000);")
                 time.sleep(1)
-                page.evaluate("window.scrollBy(0, 1000);")
+                driver.execute_script("window.scrollBy(0, 1000);")
                 time.sleep(2)
-                close_popup(page)
+                close_popup(driver)
                 
                 # Đóng cookie banner (nếu có) để tránh chặn sự kiện click
                 try:
-                    cookie_btn = page.locator('button:has-text("Chấp nhận")').first
-                    if cookie_btn.is_visible(timeout=1000):
-                        cookie_btn.click()
-                        time.sleep(1)
+                    driver.execute_script('''
+                        document.querySelectorAll('button').forEach(btn => {
+                            if (btn.innerText && btn.innerText.includes("Chấp nhận")) btn.click();
+                        });
+                    ''')
+                    time.sleep(1)
                 except:
                     pass
                 
                 # Cố gắng bấm nút Xem cấu hình chi tiết
                 try:
-                    btn = page.locator('button:has-text("Xem tất cả thông số"), a:has-text("Xem tất cả thông số"), span:has-text("Thông số kỹ thuật")').first
-                    if btn.is_visible(timeout=2000):
-                        btn.click()
-                        time.sleep(2)
+                    driver.execute_script('''
+                        document.querySelectorAll('button, a, span').forEach(el => {
+                            let text = (el.innerText || "").toLowerCase();
+                            if (text.includes("xem tất cả thông số") || text.includes("thông số kỹ thuật")) {
+                                el.click();
+                            }
+                        });
+                    ''')
+                    time.sleep(2)
                 except Exception as e:
                     pass
                 
-                html_detail = page.content()
+                html_detail = driver.page_source
                 prod_page = Adaptor(html_detail, url=url)
                 
                 from bs4 import BeautifulSoup
@@ -202,7 +228,8 @@ def crawl_fptshop_to_excel():
             except Exception as e:
                 print(f"    ! Gặp lỗi khi xử lý link {url}: {e}")
                 
-        browser.close()
+        if 'driver' in locals():
+            driver.quit()
         
         if final_results:
             df = pd.DataFrame(final_results)

@@ -7,9 +7,23 @@ if __name__ == "__main__":
     options.add_argument('--no-sandbox') 
     options.add_argument('--disable-dev-shm-usage')
     
-    # LƯU Ý: KHÔNG CÓ --headless ở đây, vì chúng ta đang dùng màn hình ảo xvfb!
-    driver = uc.Chrome(options=options)
-    
+    # Xử lý lỗi lệch version giữa Chrome cài sẵn trên server và ChromeDriver tải về
+    try:
+        driver = uc.Chrome(options=options)
+    except Exception as e:
+        error_msg = str(e)
+        if "This version of ChromeDriver only supports Chrome version" in error_msg:
+            import re
+            match = re.search(r"Current browser version is (\d+)", error_msg)
+            if match:
+                version = int(match.group(1))
+                print(f"-> Đã phát hiện Chrome version {version}. Đang thử lại với version_main={version}...")
+                driver = uc.Chrome(options=options, version_main=version)
+            else:
+                raise e
+        else:
+            raise e
+            
     try:
         print("Mở Chrome thành công! Đang truy cập trang web...")
         driver.get("https://phongvu.vn")
@@ -17,5 +31,6 @@ if __name__ == "__main__":
     except Exception as e:
         print("Lỗi:", e)
     finally:
-        driver.quit()
+        if 'driver' in locals():
+            driver.quit()
         print("Hoàn tất test xvfb.")

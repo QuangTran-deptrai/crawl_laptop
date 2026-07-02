@@ -82,6 +82,25 @@ def crawl_phongvu_to_excel():
             
     try:
         driver.get(SEARCH_URL)
+        
+        # Chờ Cloudflare Turnstile (nếu có) xử lý
+        print("Đang kiểm tra Cloudflare...")
+        for _ in range(15):
+            if "Just a moment" in driver.title or "Cloudflare" in driver.title:
+                time.sleep(2)
+                try:
+                    # Nếu có iframe Turnstile bắt click, thử click vào
+                    iframe = driver.find_element(By.TAG_NAME, "iframe")
+                    driver.switch_to.frame(iframe)
+                    cb = driver.find_element(By.TAG_NAME, "input") # input checkbox
+                    if cb:
+                        driver.execute_script("arguments[0].click();", cb)
+                    driver.switch_to.default_content()
+                except Exception:
+                    driver.switch_to.default_content()
+            else:
+                break
+                
         time.sleep(5)
         
         print("    >> Đang tải tất cả sản phẩm (scroll)...")

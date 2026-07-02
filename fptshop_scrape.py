@@ -61,6 +61,26 @@ def crawl_fptshop_to_excel():
     if True:
         print("=== [LEVEL 0] ĐANG QUÉT TRANG TÌM KIẾM FPT SHOP ===")
         driver.get(SEARCH_URL)
+        
+        # Chờ Cloudflare Turnstile (nếu có) xử lý
+        print("Đang kiểm tra Cloudflare...")
+        from selenium.webdriver.common.by import By
+        for _ in range(15):
+            if "Just a moment" in driver.title or "Cloudflare" in driver.title:
+                time.sleep(2)
+                try:
+                    # Nếu có iframe Turnstile bắt click, thử click vào
+                    iframe = driver.find_element(By.TAG_NAME, "iframe")
+                    driver.switch_to.frame(iframe)
+                    cb = driver.find_element(By.TAG_NAME, "input") # input checkbox
+                    if cb:
+                        driver.execute_script("arguments[0].click();", cb)
+                    driver.switch_to.default_content()
+                except Exception:
+                    driver.switch_to.default_content()
+            else:
+                break
+                
         time.sleep(4)
         print(f"Tiêu đề trang: {driver.title}")
         close_popup(driver)

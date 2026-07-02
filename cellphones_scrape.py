@@ -173,16 +173,10 @@ def crawl_cellphones_to_excel():
                         
                 specs_string = " | ".join([f"{k}: {v}" for k, v in specs_dict.items()])
                 
-                # 3. Giá hiện tại & Giá gốc
-                current_price = prod_page.css('.box-product-price-wrapper .sale-price::text, .box-product-price-wrapper .product__price--show::text').get(default="").strip()
-                if not current_price:
-                    current_price = prod_page.css('.product__price--show::text').get(default="").strip()
-                    
-                original_price = prod_page.css('.box-product-price-wrapper .base-price::text, .box-product-price-wrapper .product__price--through::text').get(default="").strip()
-                if not original_price:
-                    original_price = prod_page.css('.product__price--through::text').get(default="").strip()
-                    
-                discount_percent = prod_page.css('.product__price--percent-detail span::text').get(default="").strip()
+                # 3. Giá hiện tại & Giá gốc (Chỉ quét trong khung giá chính để tránh lấy nhầm giá phụ kiện)
+                current_price = prod_page.css('.box-info__box-price .product__price--show::text, .box-product-price-wrapper .sale-price::text, .box-product-price-wrapper .product__price--show::text').get(default="").strip()
+                original_price = prod_page.css('.box-info__box-price .product__price--through::text, .box-product-price-wrapper .base-price::text, .box-product-price-wrapper .product__price--through::text').get(default="").strip()
+                discount_percent = prod_page.css('.box-info__box-price .product__price--percent-detail span::text').get(default="").strip()
                 
                 # 4. Khuyến mãi
                 promo_list = []

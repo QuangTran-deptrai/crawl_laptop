@@ -1,0 +1,74 @@
+name: Daily Laptop Data Scraper
+
+on:
+  schedule:
+    - cron: '0 0 * * *' # Chạy vào 00:00 UTC (7h00 sáng VN) mỗi ngày
+  workflow_dispatch: # Nút nhấn chạy thủ công
+
+jobs:
+  scrape-and-commit:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # Cho phép GitHub Actions push code mới lên repo
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python environment
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip' # Lưu cache pip để các lần chạy sau cài đặt nhanh hơn
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Install Playwright & Patchright Chromium
+        run: |
+          playwright install chromium
+          patchright install chromium
+
+      - name: Install xvfb (X virtual framebuffer)
+        run: sudo apt-get update && sudo apt-get install -y xvfb
+
+      - name: Run FPT Shop Scraper
+        continue-on-error: true
+        run: xvfb-run python fptshop_scrape.py
+
+      - name: Run The Gioi Di Dong Scraper
+        continue-on-error: true
+        run: xvfb-run python tgdd_scrape.py
+
+      - name: Run CellphoneS Scraper
+        continue-on-error: true
+        run: xvfb-run python cellphones_scrape.py
+
+      - name: Run Phong Vu Scraper
+        continue-on-error: true
+        run: xvfb-run python phongvu_scrape.py
+
+      - name: Run GearVN Scraper
+        continue-on-error: true
+        run: xvfb-run python gearvn_scrape.py
+
+      - name: Sync to Google Sheets and Send Telegram Report
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          GOOGLE_SHEETS_WEBHOOK_URL: ${{ secrets.GOOGLE_SHEETS_WEBHOOK_URL }}
+        run: python sync_excel_to_sheets.py
+
+      - name: Commit and push changes
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          
+          # Lấy danh sách các file excel mới và thêm vào repo
+          git add -f laptop_fptshop_all.xlsx laptop_tgdd_all.xlsx laptop_cellphones_all.xlsx laptop_phongvu_all.xlsx laptop_gearvn_all.xlsx
+          
+          # Kiểm tra xem có thay đổi mới không, nếu có thì commit và push
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Auto-update: Cập nhật dữ liệu Laptop mới nhất [skip ci]" && git push)

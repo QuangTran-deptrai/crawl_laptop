@@ -1,7 +1,9 @@
-import time
 import pandas as pd
 from datetime import datetime
+import time
+from patchright.sync_api import sync_playwright
 from scrapling.parser import Adaptor
+from bs4 import BeautifulSoup
 
 BASE_URL = "https://fptshop.com.vn"
 SEARCH_URL = "https://fptshop.com.vn/may-tinh-xach-tay"
@@ -20,101 +22,82 @@ def calculate_discount(current_price, original_price, scraped_discount=""):
         pass
     return ""
 
-import undetected_chromedriver as uc
-
-def close_popup(driver):
+def close_popup(page):
+    """Đóng popup quảng cáo hoặc banner nếu xuất hiện."""
     try:
-        driver.execute_script('''
-            document.querySelectorAll('iframe, video').forEach(el => el.remove());
-            document.querySelectorAll('.cancel-button, .close-modal, .insider-opt-in-notification-button').forEach(el => el.click());
-        ''')
+        page.keyboard.press("Escape")
         time.sleep(0.5)
+        page.evaluate('''() => {
+            document.querySelectorAll('.popup, .banner, .cookie-banner').forEach(el => {
+                el.style.display = 'none';
+            });
+            document.body.style.overflow = 'auto';
+        }''')
     except Exception:
         pass
 
 def crawl_fptshop_to_excel():
-    print("Khởi tạo undetected_chromedriver cho FPT Shop...")
-    options = uc.ChromeOptions()
-    options.add_argument('--no-sandbox')
-    options.add_argument('--disable-dev-shm-usage')
-    options.add_argument('--mute-audio')
-    options.add_argument('--window-size=1920,1080')
+    print("Khởi tạo Patchright cho FPT Shop...")
     
-    try:
-        driver = uc.Chrome(options=options)
-    except Exception as e:
-        error_msg = str(e)
-        if "This version of ChromeDriver only supports Chrome version" in error_msg:
-            import re
-            match = re.search(r"Current browser version is (\d+)", error_msg)
-            if match:
-                version = int(match.group(1))
-                options2 = uc.ChromeOptions()
-                options2.add_argument('--no-sandbox')
-                options2.add_argument('--disable-dev-shm-usage')
-                options2.add_argument('--mute-audio')
-                driver = uc.Chrome(options=options2, version_main=version)
-            else:
-                raise e
-        else:
-            raise e
-            
-    if True:
-        print("=== [LEVEL 0] ĐANG QUÉT TRANG TÌM KIẾM FPT SHOP ===")
+    with sync_playwright() as p:
+        browser = p.chromium.launch(
+            headless=False,
+            args=["--start-maximized", "--window-size=1920,1080"]
+        )
+        context = browser.new_context(viewport={"width": 1920, "height": 1080})
+        page = context.new_page()
         
-        from selenium.webdriver.common.by import By
-        from selenium.webdriver.common.action_chains import ActionChains
+        print("=== [LEVEL 0] ĐANG QUÉT TRANG TÌM KIẾM FPT SHOP ===")
         
         # Thử tối đa 3 lần tải lại trang nếu bị kẹt ở Cloudflare
         for attempt in range(3):
-            driver.get(SEARCH_URL)
+            page.goto(SEARCH_URL, wait_until="domcontentloaded")
             print(f"Đang kiểm tra Cloudflare (lần thử {attempt + 1})...")
             
-            for _ in range(12):
-                if "Just a moment" in driver.title or "Cloudflare" in driver.title:
+            for _ in range(15):
+                title = page.title()
+                if "Just a moment" in title or "Cloudflare" in title:
                     time.sleep(2)
                     try:
-                        iframe = driver.find_element(By.TAG_NAME, "iframe")
-                        driver.switch_to.frame(iframe)
-                        cb = driver.find_element(By.TAG_NAME, "input")
-                        if cb:
-                            # Dùng ActionChains để click mô phỏng chuột thật thay vì Javascript
-                            ActionChains(driver).move_to_element(cb).click().perform()
-                        driver.switch_to.default_content()
+                        # Dùng Playwright frame_locator để click vào Turnstile
+                        cb = page.frame_locator("iframe").locator("input").first
+                        if cb.is_visible(timeout=1000):
+                            cb.click(force=True)
                     except Exception:
-                        driver.switch_to.default_content()
+                        pass
                 else:
                     break
                     
-            if "Just a moment" not in driver.title and "Cloudflare" not in driver.title:
+            title = page.title()
+            if "Just a moment" not in title and "Cloudflare" not in title:
                 break # Đã vượt qua thành công
                 
         time.sleep(4)
-        print(f"Tiêu đề trang: {driver.title}")
-        close_popup(driver)
+        print(f"Tiêu đề trang: {page.title()}")
+        close_popup(page)
         
         print("    >> Đang tải tất cả sản phẩm (bấm Xem thêm)...")
         load_more_count = 0
         retry_count = 0
         while True:
-            driver.execute_script("window.scrollBy(0, 1000);")
+            page.evaluate("window.scrollBy(0, 1000);")
             time.sleep(1)
-            driver.execute_script("window.scrollBy(0, 1000);")
+            page.evaluate("window.scrollBy(0, 1000);")
             time.sleep(2)
             
-            clicked = driver.execute_script('''
-                // FPT Shop có nhiều nút xem thêm, nút mở rộng sản phẩm thường kèm chữ "kết quả" hoặc "sản phẩm"
+            clicked = page.evaluate('''() => {
                 let btns = document.querySelectorAll('button');
                 for (let btn of btns) {
-                    let text = btn.innerText.toLowerCase();
-                    if (text.includes("xem thêm") && (text.includes("kết quả") || text.includes("sản phẩm"))) {
+                    if (btn.innerText && btn.innerText.toLowerCase().includes("xem thêm") && 
+                        (btn.innerText.toLowerCase().includes("kết quả") || btn.innerText.toLowerCase().includes("sản phẩm"))) {
+                        btn.scrollIntoView({block: "center"});
                         btn.click();
                         return true;
                     }
                 }
                 return false;
-            ''')
-                
+            }''')
+            
             if clicked:
                 load_more_count += 1
                 retry_count = 0
@@ -130,10 +113,10 @@ def crawl_fptshop_to_excel():
             
         # Cuộn thêm vài lần để đảm bảo render hết toàn bộ thẻ
         for _ in range(5):
-            driver.execute_script("window.scrollBy(0, 1000);")
+            page.evaluate("window.scrollBy(0, 1000);")
             time.sleep(1)
         
-        html_content = driver.page_source
+        html_content = page.content()
         search_page = Adaptor(html_content, url=SEARCH_URL)
         
         # FPT Shop có thể chứa sản phẩm trong nhiều class khác nhau, lấy tất cả a tag có link laptop
@@ -153,6 +136,7 @@ def crawl_fptshop_to_excel():
         print(f"--> Tìm thấy {len(product_links)} link laptop từ trang tìm kiếm FPTSHOP.")
         if len(product_links) == 0:
             print("Không tìm thấy link, kết thúc.")
+            browser.close()
             return
 
         print("\n=== [LEVEL 1] TRUY CẬP TỪNG LINK ĐỂ LẤY THÔNG TIN ===")
@@ -164,46 +148,45 @@ def crawl_fptshop_to_excel():
             try:
                 crawl_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 
-                driver.get(url)
+                page.goto(url, wait_until="domcontentloaded")
                 time.sleep(4)
-                close_popup(driver)
+                close_popup(page)
                 
                 # Cuộn trang sâu hơn để hiển thị bảng thông số
-                driver.execute_script("window.scrollBy(0, 1000);")
+                page.evaluate("window.scrollBy(0, 1000);")
                 time.sleep(1)
-                driver.execute_script("window.scrollBy(0, 1000);")
+                page.evaluate("window.scrollBy(0, 1000);")
                 time.sleep(2)
-                close_popup(driver)
+                close_popup(page)
                 
                 # Đóng cookie banner (nếu có) để tránh chặn sự kiện click
                 try:
-                    driver.execute_script('''
+                    page.evaluate('''() => {
                         document.querySelectorAll('button').forEach(btn => {
                             if (btn.innerText && btn.innerText.includes("Chấp nhận")) btn.click();
                         });
-                    ''')
+                    }''')
                     time.sleep(1)
                 except:
                     pass
                 
                 # Cố gắng bấm nút Xem cấu hình chi tiết
                 try:
-                    driver.execute_script('''
+                    page.evaluate('''() => {
                         document.querySelectorAll('button, a, span').forEach(el => {
                             let text = (el.innerText || "").toLowerCase();
                             if (text.includes("xem tất cả thông số") || text.includes("thông số kỹ thuật")) {
                                 el.click();
                             }
                         });
-                    ''')
+                    }''')
                     time.sleep(2)
                 except Exception as e:
                     pass
                 
-                html_detail = driver.page_source
+                html_detail = page.content()
                 prod_page = Adaptor(html_detail, url=url)
                 
-                from bs4 import BeautifulSoup
                 soup = BeautifulSoup(html_detail, 'html.parser')
 
                 # 1. Tên sản phẩm
@@ -221,8 +204,6 @@ def crawl_fptshop_to_excel():
                     promos = prod_page.css('p.relative.pl-5.f1-regular::text, p.line-clamp-1.text-textOnWhitePrimary::text, p.text-textOnWhitePrimary.f1-regular.pc\\:b2-regular::text').getall()
                 if not promos:
                     promos = prod_page.css('.promo-item *::text, .promotion-item *::text').getall()
-                promos_clean = [p.strip() for p in promos if p.strip() and "Trả góp" not in p and "Giảm ngay" not in p] 
-                # Lấy tất cả trừ "Trả góp 0%", nếu user cần thì bỏ filter đi
                 promos_clean = [p.strip() for p in promos if p.strip()]
                 promo_string = " | ".join(promos_clean)
                 
@@ -270,9 +251,15 @@ def crawl_fptshop_to_excel():
                 
             except Exception as e:
                 print(f"    ! Gặp lỗi khi xử lý link {url}: {e}")
+                # Phục hồi (Reset) lại tab trình duyệt nếu trang bị lỗi
+                try:
+                    page.close()
+                    page = context.new_page()
+                    context.on("page", lambda p: p.close() if p != page else None)
+                except Exception:
+                    pass
                 
-        if 'driver' in locals():
-            driver.quit()
+        browser.close()
         
         if final_results:
             df = pd.DataFrame(final_results)

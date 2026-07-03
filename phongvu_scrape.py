@@ -1,13 +1,11 @@
-import time
 import urllib.parse
 from bs4 import BeautifulSoup
 import pandas as pd
 from datetime import datetime
-import undetected_chromedriver as uc
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException, ElementClickInterceptedException
+import time
+from patchright.sync_api import sync_playwright
+
+SEARCH_URL = "https://phongvu.vn/c/laptop"
 
 def calculate_discount(current_price, original_price, scraped_discount=""):
     if scraped_discount and str(scraped_discount).strip():
@@ -23,90 +21,53 @@ def calculate_discount(current_price, original_price, scraped_discount=""):
         pass
     return ""
 
-SEARCH_URL = "https://phongvu.vn/c/laptop"
-TEST_MODE = False
-MAX_TEST_ITEMS = 5
-
-def close_popup(driver):
-    """Xóa sạch mọi popup/overlay đang chặn màn hình."""
+def close_popup(page):
+    """Xóa các popup/modal làm che khuất màn hình."""
     try:
-        driver.execute_script('''
-            // Xóa popup hình ảnh cụ thể từ teko-gae (popup quảng cáo chính)
-            document.querySelectorAll('img[src*="teko-gae"], img[src*="POP"], img.css-qi53z0').forEach(el => {
-                let parent = el.closest('div[class]');
-                if (parent) parent.remove();
-                else el.remove();
-            });
-            // Xóa theo class/tên cụ thể
-            document.querySelectorAll('[class*="popup"], .css-vkbz44, .css-5h8scr, [name="giqalwnk"], [data-id="giqalwnk"], .css-11y3uql, .css-qi53z0').forEach(el => el.remove());
-            // Xóa mọi overlay fixed/absolute có z-index cao
-            document.querySelectorAll('div').forEach(el => {
-                let style = window.getComputedStyle(el);
-                let z = parseInt(style.zIndex) || 0;
-                if ((style.position === 'fixed' || style.position === 'absolute') && z >= 90) {
-                    el.remove();
-                }
-            });
-            // Khôi phục thanh cuộn
+        page.keyboard.press("Escape")
+        time.sleep(0.5)
+        page.evaluate('''() => {
+            let modals = document.querySelectorAll('[role="dialog"], .ReactModalPortal, .modal, .popup');
+            modals.forEach(m => m.style.display = 'none');
             document.body.style.overflow = 'auto';
-        ''')
+        }''')
     except Exception:
         pass
 
 def crawl_phongvu_to_excel():
-    print("=== [LEVEL 0] ĐANG QUÉT TRANG TÌM KIẾM PHONG VŨ ===")
+    print("Khởi tạo Patchright cho Phong Vũ...")
     
-    options = uc.ChromeOptions()
-    options.add_argument("--start-maximized")
-    options.add_argument('--window-size=1920,1080')
-    # Xử lý lỗi lệch version giữa Chrome cài sẵn trên server và ChromeDriver tải về
-    try:
-        driver = uc.Chrome(options=options)
-    except Exception as e:
-        error_msg = str(e)
-        if "This version of ChromeDriver only supports Chrome version" in error_msg:
-            import re
-            match = re.search(r"Current browser version is (\d+)", error_msg)
-            if match:
-                version = int(match.group(1))
-                print(f"-> Đã phát hiện Chrome version {version}. Đang thử lại với version_main={version}...")
-                
-                # BẮT BUỘC TẠO LẠI OPTIONS VÌ UC KHÔNG CHO PHÉP TÁI SỬ DỤNG
-                options2 = uc.ChromeOptions()
-                options2.add_argument("--start-maximized")
-                
-                driver = uc.Chrome(options=options2, version_main=version)
-            else:
-                raise e
-        else:
-            raise e
-            
-    try:
-        from selenium.webdriver.common.by import By
-        from selenium.webdriver.common.action_chains import ActionChains
+    with sync_playwright() as p:
+        browser = p.chromium.launch(
+            headless=False,
+            args=["--start-maximized", "--window-size=1920,1080"]
+        )
+        context = browser.new_context(viewport={"width": 1920, "height": 1080})
+        page = context.new_page()
+        
+        print("=== [LEVEL 0] ĐANG QUÉT TRANG TÌM KIẾM PHONG VŨ ===")
         
         # Thử tối đa 3 lần tải lại trang nếu bị kẹt ở Cloudflare
         for attempt in range(3):
-            driver.get(SEARCH_URL)
+            page.goto(SEARCH_URL, wait_until="domcontentloaded")
             print(f"Đang kiểm tra Cloudflare (lần thử {attempt + 1})...")
             
             for _ in range(12):
-                if "Just a moment" in driver.title or "Cloudflare" in driver.title:
+                title = page.title()
+                if "Just a moment" in title or "Cloudflare" in title:
                     time.sleep(2)
                     try:
-                        iframe = driver.find_element(By.TAG_NAME, "iframe")
-                        driver.switch_to.frame(iframe)
-                        cb = driver.find_element(By.TAG_NAME, "input")
-                        if cb:
-                            # Dùng ActionChains để click mô phỏng chuột thật thay vì Javascript
-                            ActionChains(driver).move_to_element(cb).click().perform()
-                        driver.switch_to.default_content()
+                        # Dùng Playwright frame_locator để click vào Turnstile
+                        cb = page.frame_locator("iframe").locator("input").first
+                        if cb.is_visible(timeout=1000):
+                            cb.click(force=True)
                     except Exception:
-                        driver.switch_to.default_content()
+                        pass
                 else:
                     break
                     
-            if "Just a moment" not in driver.title and "Cloudflare" not in driver.title:
+            title = page.title()
+            if "Just a moment" not in title and "Cloudflare" not in title:
                 break # Đã vượt qua thành công
                 
         time.sleep(5)
@@ -116,50 +77,33 @@ def crawl_phongvu_to_excel():
         load_more_count = 0
         
         while True:
-            close_popup(driver)
+            close_popup(page)
             
             # Cuộn từ từ xuống cuối
-            driver.execute_script("window.scrollBy(0, window.innerHeight);")
+            page.evaluate("window.scrollBy(0, window.innerHeight);")
             time.sleep(1.5)
-            driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+            page.evaluate("window.scrollTo(0, document.body.scrollHeight);")
             time.sleep(2)
             
             # Đếm sản phẩm hiện có
-            current_count = driver.execute_script("return document.querySelectorAll('a[href*=\"-s\"]').length")
+            current_count = page.evaluate("return document.querySelectorAll('a[href*=\"-s\"]').length")
             
             if current_count == last_count:
                 clicked = False
                 try:
-                    # Tìm nút "Xem thêm sản phẩm"
-                    elements = driver.find_elements(By.XPATH, "//*[contains(text(), 'Xem thêm sản phẩm')]")
-                    if not elements:
-                        elements = driver.find_elements(By.XPATH, "//*[contains(@class, 'button-text') and contains(text(), 'Xem thêm')]")
-                    
-                    if elements:
-                        btn = elements[0]
-                        # Cuộn nút vào giữa màn hình
-                        driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", btn)
-                        time.sleep(2)
-                        
-                        # XÓA POPUP NGAY TRƯỚC KHI CLICK (popup hay xuất hiện lại sau cuộn)
-                        close_popup(driver)
-                        time.sleep(0.5)
-                        
-                        # Xóa target="_blank" trên thẻ <a> cha để không mở tab mới
-                        driver.execute_script('''
-                            let el = arguments[0];
-                            let a = el.closest('a');
-                            if (a) { a.removeAttribute('target'); a.removeAttribute('rel'); }
-                        ''', btn)
-                        
-                        # Click
-                        try:
-                            btn.click()
-                            clicked = True
-                        except Exception:
-                            # Fallback: JS click
-                            driver.execute_script("arguments[0].click();", btn)
-                            clicked = True
+                    # Tìm và click nút "Xem thêm sản phẩm"
+                    clicked = page.evaluate('''() => {
+                        let btns = document.querySelectorAll('button, div');
+                        for (let btn of btns) {
+                            let text = btn.innerText || "";
+                            if (text.includes('Xem thêm sản phẩm') || (btn.className && typeof btn.className === 'string' && btn.className.includes('button-text') && text.includes('Xem thêm'))) {
+                                btn.scrollIntoView({block: 'center'});
+                                btn.click();
+                                return true;
+                            }
+                        }
+                        return false;
+                    }''')
                 except Exception:
                     pass
                 
@@ -168,10 +112,10 @@ def crawl_phongvu_to_excel():
                     print(f"    >> Đã bấm 'Xem thêm' lần {load_more_count}")
                     time.sleep(5) 
                     
-                    new_count = driver.execute_script("return document.querySelectorAll('a[href*=\"-s\"]').length")
+                    new_count = page.evaluate("return document.querySelectorAll('a[href*=\"-s\"]').length")
                     if new_count <= current_count:
                         time.sleep(3)
-                        new_count = driver.execute_script("return document.querySelectorAll('a[href*=\"-s\"]').length")
+                        new_count = page.evaluate("return document.querySelectorAll('a[href*=\"-s\"]').length")
                         if new_count <= current_count:
                             break
                     current_count = new_count
@@ -182,7 +126,7 @@ def crawl_phongvu_to_excel():
             
         time.sleep(2)
         
-        html = driver.page_source
+        html = page.content()
         soup = BeautifulSoup(html, "html.parser")
         product_links = []
         
@@ -204,55 +148,46 @@ def crawl_phongvu_to_excel():
                         product_links.append(full_link)
                         
         print(f"--> Tìm thấy {len(product_links)} link laptop từ trang tìm kiếm Phong Vũ.")
+        if len(product_links) == 0:
+            browser.close()
+            return
+            
         print("\n=== [LEVEL 1] TRUY CẬP TỪNG LINK ĐỂ TRÍCH XUẤT THÔNG TIN ===")
         
         final_results = []
-        links_to_process = product_links
-        if TEST_MODE and len(links_to_process) > MAX_TEST_ITEMS:
-            links_to_process = links_to_process[:MAX_TEST_ITEMS]
-            print(f"*** CHẾ ĐỘ TEST: Chỉ chạy {MAX_TEST_ITEMS} sản phẩm đầu tiên ***")
             
-        for i, link in enumerate(links_to_process, 1):
-            print(f"[{i}/{len(links_to_process)}] Đang xử lý: {link}")
+        for i, link in enumerate(product_links, 1):
+            print(f"[{i}/{len(product_links)}] Đang xử lý: {link}")
             try:
-                driver.get(link)
-                try:
-                    WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.TAG_NAME, "h1")))
-                except TimeoutException:
-                    pass
+                page.goto(link, wait_until="domcontentloaded")
                 
-                time.sleep(2)
-                close_popup(driver)
+                time.sleep(3)
+                close_popup(page)
                 
                 # Cuộn từ từ xuống cuối trang để ép load toàn bộ nội dung (đặc biệt là bảng thông số bị lazy-load)
-                for i in range(1, 4):
-                    driver.execute_script(f"window.scrollTo(0, document.body.scrollHeight * {i} / 3);")
+                for _ in range(1, 4):
+                    page.evaluate("window.scrollBy(0, document.body.scrollHeight / 3);")
                     time.sleep(0.5)
                 
                 # Cuộn ngược lên một chút để tìm bảng thông số (thường nằm ở giữa trang)
-                driver.execute_script("window.scrollBy(0, -500);")
+                page.evaluate("window.scrollBy(0, -500);")
                 time.sleep(1)
                 
                 # Cố gắng tìm và click nút "Xem thêm" thông số kỹ thuật (để mở rộng bảng)
                 try:
-                    # Chỉ tìm các thẻ <button> có chứa chữ Xem thêm (tránh tìm cả thẻ <div> bên trong gây click đúp)
-                    spec_btns = driver.find_elements(By.XPATH, "//button[contains(., 'Xem thêm')]")
-                    for btn in spec_btns:
-                        try:
-                            # Tránh click lại nút đã chuyển thành "Thu gọn"
-                            if "Xem thêm" in btn.text:
-                                driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", btn)
-                                time.sleep(0.5)
-                                driver.execute_script("arguments[0].click();", btn)
-                                time.sleep(1) # Nghỉ một lát giữa các lần click
-                        except Exception:
-                            pass
-                    # CHỜ 3 GIÂY ĐỂ BẢNG THÔNG SỐ RENDER ĐẦY ĐỦ (React cần thời gian)
-                    time.sleep(3)
+                    page.evaluate('''() => {
+                        document.querySelectorAll('button').forEach(btn => {
+                            if ((btn.innerText || "").includes("Xem thêm")) {
+                                btn.scrollIntoView({block: 'center'});
+                                btn.click();
+                            }
+                        });
+                    }''')
+                    time.sleep(3) # Chờ render
                 except Exception:
                     pass
                 
-                detail_html = driver.page_source
+                detail_html = page.content()
                 detail_soup = BeautifulSoup(detail_html, "html.parser")
                 
                 # Tên sản phẩm
@@ -272,12 +207,10 @@ def crawl_phongvu_to_excel():
                     price = price_tag.get_text(strip=True)
                 
                 # Giá gốc thường nằm trong div type="body" color="textSecondary" gần phần % giảm giá
-                # Thử tìm thẻ có text chứa '₫' và gạch ngang hoặc nằm trong nhóm giá
                 orig_tags = detail_soup.find_all("div", {"type": "body", "color": "textSecondary"})
                 for t in orig_tags:
                     text = t.get_text(strip=True)
                     if "₫" in text and text != price:
-                        # Kiểm tra xem nó có nằm cạnh thẻ giảm giá (vd: -9%) không
                         parent = t.parent
                         if parent and parent.get("direction") == "row":
                             original_price = text
@@ -285,14 +218,12 @@ def crawl_phongvu_to_excel():
                 
                 # Khuyến mãi
                 promos = []
-                # Tìm các thẻ div giảm giá trực tiếp
                 direct_promos = detail_soup.find_all("div", {"color": "textTitle"})
                 for dp in direct_promos:
                     txt = dp.get_text(strip=True)
                     if "Giảm" in txt or "áp dụng" in txt:
                         promos.append(txt)
                 
-                # Tìm trong danh sách ul li (Khuyến mãi liên quan)
                 promo_uls = detail_soup.find_all("ul")
                 for ul in promo_uls:
                     for li in ul.find_all("li"):
@@ -304,14 +235,12 @@ def crawl_phongvu_to_excel():
                 
                 # Cấu hình chi tiết
                 specs = ""
-                # Bảng thông số thường là các hàng div direction="row" width="100%"
                 spec_rows = detail_soup.find_all("div", {"direction": "row", "width": "100%"})
                 for row in spec_rows:
                     divs = row.find_all("div", recursive=False)
                     if len(divs) >= 2:
                         key = divs[0].get_text(strip=True)
                         val = divs[1].get_text(strip=True)
-                        # Bỏ qua các hàng không phải là thông số (ví dụ: nút xem thêm, tiêu đề)
                         if key and val and key.lower() not in ['xem thêm', 'thông số kỹ thuật']:
                             specs += f"{key}: {val}\n"
                 
@@ -323,24 +252,26 @@ def crawl_phongvu_to_excel():
                     "Giảm Giá": calculate_discount(price, original_price, ""),
                     "Khuyến Mãi": promo_text,
                     "Cấu Hình Chi Tiết": specs.strip(),
-                    "Link Sản Phẩm": link
+                    "URL": link,
+                    "Ngày Thu Thập": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 })
             except Exception as e:
                 print(f"    x Lỗi khi xử lý {link}: {e}")
-                continue
-                
-    except Exception as e:
-        print(f"Lỗi trong quá trình quét: {e}")
-    finally:
-        try:
-            driver.quit()
-        except OSError:
-            pass
+                # Phục hồi (Reset) tab trình duyệt
+                try:
+                    page.close()
+                    page = context.new_page()
+                except:
+                    pass
         
-    if final_results:
-        df = pd.DataFrame(final_results)
-        df.to_excel("laptop_phongvu_all.xlsx", index=False)
-        print(f"\n=== HOÀN THÀNH! Đã lưu {len(final_results)} laptop vào 'laptop_phongvu_all.xlsx' ===")
+        browser.close()
+        
+        if final_results:
+            df = pd.DataFrame(final_results)
+            df.to_excel("laptop_phongvu_all.xlsx", index=False)
+            print(f"\n=== HOÀN THÀNH! Đã lưu {len(final_results)} laptop vào 'laptop_phongvu_all.xlsx' ===")
+        else:
+            print("\n=== LỖI: Không có dữ liệu nào được thu thập. ===")
 
 if __name__ == "__main__":
     crawl_phongvu_to_excel()

@@ -63,84 +63,84 @@ def crawl_phongvu_to_excel():
         else:
             # Thử tối đa 3 lần tải lại trang nếu bị kẹt ở Cloudflare
             for attempt in range(3):
-            page.goto(SEARCH_URL, wait_until="domcontentloaded")
-            print(f"Đang kiểm tra Cloudflare (lần thử {attempt + 1})...")
-            
-            for _ in range(12):
+                page.goto(SEARCH_URL, wait_until="domcontentloaded")
+                print(f"Đang kiểm tra Cloudflare (lần thử {attempt + 1})...")
+                
+                for _ in range(12):
+                    title = page.title()
+                    if "Just a moment" in title or "Cloudflare" in title:
+                        time.sleep(2)
+                        try:
+                            # Dùng Playwright frame_locator để click vào Turnstile
+                            cb = page.frame_locator("iframe").locator("input").first
+                            if cb.is_visible(timeout=1000):
+                                cb.click(force=True)
+                        except Exception:
+                            pass
+                    else:
+                        break
+                        
                 title = page.title()
-                if "Just a moment" in title or "Cloudflare" in title:
-                    time.sleep(2)
-                    try:
-                        # Dùng Playwright frame_locator để click vào Turnstile
-                        cb = page.frame_locator("iframe").locator("input").first
-                        if cb.is_visible(timeout=1000):
-                            cb.click(force=True)
-                    except Exception:
-                        pass
-                else:
-                    break
-                    
-            title = page.title()
-            if "Just a moment" not in title and "Cloudflare" not in title:
-                break # Đã vượt qua thành công
-        
-        time.sleep(3)
-        print(f"Tiêu đề trang: {page.title()}")
-        close_popup(page)
-        
-        print("    >> Đang gọi API lấy danh sách toàn bộ sản phẩm (ẩn)...")
-        
-        # Inject JavaScript để fetch API danh sách sản phẩm của Phong Vũ (bỏ qua giới hạn hiển thị của frontend)
-        js_fetch_all = """
-        async () => {
-            let allLinks = [];
-            let page = 1;
-            while (true) {
-                try {
-                    let response = await fetch('https://discovery.tekoapis.com/api/v2/search-skus-v2', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({
-                            terminalId: 4,
-                            page: page,
-                            pageSize: 40,
-                            slug: '/c/laptop',
-                            filter: {},
-                            sorting: {sort: 'SORT_BY_CREATED_AT', order: 'ORDER_BY_DESCENDING'}
-                        })
-                    });
-                    
-                    let data = await response.json();
-                    let products = data?.data?.products || [];
-                    
-                    if (products.length === 0) {
+                if "Just a moment" not in title and "Cloudflare" not in title:
+                    break # Đã vượt qua thành công
+            
+            time.sleep(3)
+            print(f"Tiêu đề trang: {page.title()}")
+            close_popup(page)
+            
+            print("    >> Đang gọi API lấy danh sách toàn bộ sản phẩm (ẩn)...")
+            
+            # Inject JavaScript để fetch API danh sách sản phẩm của Phong Vũ (bỏ qua giới hạn hiển thị của frontend)
+            js_fetch_all = """
+            async () => {
+                let allLinks = [];
+                let page = 1;
+                while (true) {
+                    try {
+                        let response = await fetch('https://discovery.tekoapis.com/api/v2/search-skus-v2', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({
+                                terminalId: 4,
+                                page: page,
+                                pageSize: 40,
+                                slug: '/c/laptop',
+                                filter: {},
+                                sorting: {sort: 'SORT_BY_CREATED_AT', order: 'ORDER_BY_DESCENDING'}
+                            })
+                        });
+                        
+                        let data = await response.json();
+                        let products = data?.data?.products || [];
+                        
+                        if (products.length === 0) {
+                            break;
+                        }
+                        
+                        for (let p of products) {
+                            if (p.canonical) {
+                                allLinks.push('https://phongvu.vn/' + p.canonical);
+                            }
+                        }
+                        
+                        page++;
+                    } catch (e) {
                         break;
                     }
-                    
-                    for (let p of products) {
-                        if (p.canonical) {
-                            allLinks.push('https://phongvu.vn/' + p.canonical);
-                        }
-                    }
-                    
-                    page++;
-                } catch (e) {
-                    break;
                 }
+                return allLinks;
             }
-            return allLinks;
-        }
-        """
-        product_links = page.evaluate(js_fetch_all)
-        product_links = list(set(product_links))
-        
-        print(f"--> Tìm thấy {len(product_links)} link laptop từ trang tìm kiếm Phong Vũ.")
-        if len(product_links) == 0:
-            print("Không tìm thấy link, kết thúc.")
-            browser.close()
-            return
+            """
+            product_links = page.evaluate(js_fetch_all)
+            product_links = list(set(product_links))
+            
+            print(f"--> Tìm thấy {len(product_links)} link laptop từ trang tìm kiếm Phong Vũ.")
+            if len(product_links) == 0:
+                print("Không tìm thấy link, kết thúc.")
+                browser.close()
+                return
             
         import random
         random.shuffle(product_links)

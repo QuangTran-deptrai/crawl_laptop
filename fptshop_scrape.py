@@ -77,10 +77,11 @@ def crawl_fptshop_to_excel():
         close_popup(page)
         
         print("    >> Đang tải tất cả sản phẩm (bấm Xem thêm)...")
-        load_more_count = 0
         last_count = 0
+        loop_count = 0
         
         while True:
+            # Cuộn từng bước nhỏ để kích hoạt lazy load
             page.evaluate("window.scrollBy(0, 1000);")
             time.sleep(1)
             page.evaluate("window.scrollBy(0, 1000);")
@@ -89,37 +90,36 @@ def crawl_fptshop_to_excel():
             current_count = page.evaluate("document.querySelectorAll('a[href^=\"/may-tinh-xach-tay/\"], a[href^=\"/laptop\"]').length")
             
             if current_count == last_count:
-                clicked = False
-                try:
-                    import re
-                    # FPT Shop: Nút thường chứa "Xem thêm ... kết quả"
-                    btn = page.locator('button', has=page.locator('text=/(xem thêm.*kết quả|xem thêm.*sản phẩm)/i')).first
-                    if btn.count() == 0:
-                        btn = page.locator('button', has_text=re.compile(r'xem thêm', re.IGNORECASE)).first
-                        
-                    if btn.count() > 0:
-                        btn.first.scroll_into_view_if_needed()
-                        # Dùng Playwright native click với force=True để ép click qua React
-                        btn.first.click(force=True)
-                        clicked = True
-                except Exception:
-                    pass
+                # Tìm nút "Xem thêm"
+                import re
+                btn = page.locator('button', has=page.locator('text=/(xem thêm.*kết quả|xem thêm.*sản phẩm)/i')).first
+                if btn.count() == 0:
+                    btn = page.locator('button', has_text=re.compile(r'xem thêm', re.IGNORECASE)).first
                 
-                if clicked:
-                    load_more_count += 1
-                    print(f"    >> Đã bấm 'Xem thêm' lần {load_more_count}")
-                    time.sleep(4)
-                    new_count = page.evaluate("document.querySelectorAll('a[href^=\"/may-tinh-xach-tay/\"], a[href^=\"/laptop\"]').length")
-                    if new_count <= current_count:
-                        time.sleep(3)
+                if btn.count() > 0:
+                    try:
+                        btn.first.click(force=True)
+                        loop_count += 1
+                        print(f"    >> Đã bấm 'Xem thêm' lần {loop_count} (Tổng: {current_count} SP)")
+                        time.sleep(4)
+                        
                         new_count = page.evaluate("document.querySelectorAll('a[href^=\"/may-tinh-xach-tay/\"], a[href^=\"/laptop\"]').length")
                         if new_count <= current_count:
-                            break
-                    current_count = new_count
+                            time.sleep(3)
+                            new_count = page.evaluate("document.querySelectorAll('a[href^=\"/may-tinh-xach-tay/\"], a[href^=\"/laptop\"]').length")
+                            if new_count <= current_count:
+                                break
+                        current_count = new_count
+                    except Exception:
+                        break
                 else:
                     break
                     
             last_count = current_count
+            
+            # Tránh lặp vô hạn (25 lần bấm = khoảng 1000 sản phẩm)
+            if loop_count > 25:
+                break
             
         # Cuộn thêm vài lần để đảm bảo render hết toàn bộ thẻ
         for _ in range(5):

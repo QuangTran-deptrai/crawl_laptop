@@ -69,60 +69,62 @@ def crawl_phongvu_to_excel():
             title = page.title()
             if "Just a moment" not in title and "Cloudflare" not in title:
                 break # Đã vượt qua thành công
-                
-        time.sleep(5)
         
-        print("    >> Đang tải tất cả sản phẩm (scroll)...")
-        no_change_count = 0
-        last_count = 0
+        time.sleep(3)
+        print(f"Tiêu đề trang: {page.title()}")
+        close_popup(page)
         
-        while True:
-            close_popup(page)
-            
-            # Cuộn từ từ xuống cuối
-            page.evaluate("window.scrollBy(0, window.innerHeight);")
-            time.sleep(1.5)
-            page.evaluate("window.scrollTo(0, document.body.scrollHeight);")
-            time.sleep(3)
-            
-            # Đếm sản phẩm hiện có
-            current_count = page.evaluate("document.querySelectorAll('a[href*=\"-s\"]').length")
-            
-            if current_count == last_count:
-                no_change_count += 1
-                if no_change_count >= 3:
-                    break
-            else:
-                no_change_count = 0
-                last_count = current_count
-                
-        print(f"--> Tìm thấy {current_count} link laptop từ trang tìm kiếm Phong Vũ.")
-            
-        time.sleep(2)
+        print("    >> Đang gọi API lấy danh sách toàn bộ sản phẩm (ẩn)...")
         
-        html = page.content()
-        soup = BeautifulSoup(html, "html.parser")
-        product_links = []
+        # Inject JavaScript để fetch API danh sách sản phẩm của Phong Vũ (bỏ qua giới hạn hiển thị của frontend)
+        js_fetch_all = """
+        async () => {
+            let allLinks = [];
+            let page = 1;
+            while (true) {
+                try {
+                    let response = await fetch('https://discovery.tekoapis.com/api/v2/search-skus-v2', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            terminalId: 4,
+                            page: page,
+                            pageSize: 40,
+                            slug: '/c/laptop',
+                            filter: {},
+                            sorting: {sort: 'SORT_BY_CREATED_AT', order: 'ORDER_BY_DESCENDING'}
+                        })
+                    });
+                    
+                    let data = await response.json();
+                    let products = data?.data?.products || [];
+                    
+                    if (products.length === 0) {
+                        break;
+                    }
+                    
+                    for (let p of products) {
+                        if (p.canonical) {
+                            allLinks.push('https://phongvu.vn/' + p.canonical);
+                        }
+                    }
+                    
+                    page++;
+                } catch (e) {
+                    break;
+                }
+            }
+            return allLinks;
+        }
+        """
+        product_links = page.evaluate(js_fetch_all)
+        product_links = list(set(product_links))
         
-        # Bắt tất cả thẻ <a> có link chứa "-s" (mã SKU của Phong Vũ) và liên quan đến laptop
-        for a_tag in soup.find_all("a", href=True):
-            href = a_tag["href"]
-            if "-s" in href and ("laptop" in href.lower() or "apple-macbook" in href.lower()):
-                full_link = urllib.parse.urljoin("https://phongvu.vn", href)
-                if full_link not in product_links:
-                    product_links.append(full_link)
-        
-        # Nếu vẫn không thấy, thử tìm tất cả link trong các thẻ div có class chứa 'product'
-        if not product_links:
-            for div in soup.find_all("div", class_=lambda c: c and "product" in c.lower()):
-                for a_tag in div.find_all("a", href=True):
-                    href = a_tag["href"]
-                    full_link = urllib.parse.urljoin("https://phongvu.vn", href)
-                    if full_link not in product_links:
-                        product_links.append(full_link)
-                        
         print(f"--> Tìm thấy {len(product_links)} link laptop từ trang tìm kiếm Phong Vũ.")
         if len(product_links) == 0:
+            print("Không tìm thấy link, kết thúc.")
             browser.close()
             return
             

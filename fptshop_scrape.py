@@ -121,7 +121,10 @@ def crawl_fptshop_to_excel():
             print("Không tìm thấy link, kết thúc.")
             browser.close()
             return
-
+            
+        import random
+        random.shuffle(product_links)
+        
         print("\n=== [LEVEL 1] TRUY CẬP TỪNG LINK ĐỂ LẤY THÔNG TIN ===")
         final_results = []
         
@@ -156,6 +159,14 @@ def crawl_fptshop_to_excel():
                 except Exception as e:
                     if retry < max_retries - 1:
                         print(f"    ! Lỗi goto (lần {retry+1}): {e}. Đang thử lại...")
+                        # Xoá phiên (cookies) cũ để ép Cloudflare cấp session mới
+                        try:
+                            context.close()
+                            time.sleep(1)
+                            context = browser.new_context(viewport={"width": 1920, "height": 1080})
+                            page = context.new_page()
+                        except:
+                            pass
                         time.sleep(3)
                     else:
                         print(f"    ! Bỏ qua link do lỗi goto: {e}")
@@ -271,9 +282,10 @@ def crawl_fptshop_to_excel():
                 
                 # Phục hồi (Reset) lại tab trình duyệt nếu trang bị lỗi
                 try:
-                    page.close()
+                    context.close()
+                    time.sleep(1)
+                    context = browser.new_context(viewport={"width": 1920, "height": 1080})
                     page = context.new_page()
-                    context.on("page", lambda p: p.close() if p != page else None)
                 except Exception:
                     pass
                     

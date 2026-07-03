@@ -130,6 +130,9 @@ def crawl_phongvu_to_excel():
             
         print("\n=== [LEVEL 1] TRUY CẬP TỪNG LINK ĐỂ TRÍCH XUẤT THÔNG TIN ===")
         
+        import random
+        random.shuffle(product_links)
+        
         final_results = []
             
         for i, link in enumerate(product_links, 1):
@@ -162,6 +165,14 @@ def crawl_phongvu_to_excel():
                 except Exception as e:
                     if retry < max_retries - 1:
                         print(f"    ! Lỗi goto (lần {retry+1}): {e}. Đang thử lại...")
+                        # Xoá phiên cũ để đổi IP session với Cloudflare
+                        try:
+                            context.close()
+                            time.sleep(1)
+                            context = browser.new_context(viewport={"width": 1920, "height": 1080})
+                            page = context.new_page()
+                        except:
+                            pass
                         time.sleep(3)
                     else:
                         print(f"    ! Bỏ qua link do lỗi goto: {e}")

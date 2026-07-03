@@ -136,14 +136,19 @@ def crawl_fptshop_to_excel():
                     page.goto(url, wait_until="domcontentloaded", timeout=40000)
                     
                     # Đợi Cloudflare check (nếu có)
+                    cf_cleared = False
                     for _ in range(15):
                         title = page.title()
-                        # Cloudflare page title is often 'Just a moment...' or domain name, and h1 is domain name
-                        # We wait if title contains Just a moment or Cloudflare, OR if the h1 tag contains exactly the domain
                         h1_text = page.locator('h1').first.text_content(timeout=1000) if page.locator('h1').count() > 0 else ""
-                        if "Just a moment" not in title and "Cloudflare" not in title and (h1_text and "fptshop.com.vn" not in h1_text.lower()):
+                        
+                        is_cf = ("Just a moment" in title) or ("Cloudflare" in title) or (h1_text and "fptshop.com.vn" in h1_text.lower())
+                        if not is_cf:
+                            cf_cleared = True
                             break
                         time.sleep(2)
+                        
+                    if not cf_cleared:
+                        raise Exception("Kẹt ở Cloudflare quá lâu!")
                         
                     time.sleep(2)
                     success = True

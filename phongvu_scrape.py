@@ -142,12 +142,19 @@ def crawl_phongvu_to_excel():
                     page.goto(link, wait_until="domcontentloaded", timeout=40000)
                     
                     # Đợi Cloudflare check (nếu có)
+                    cf_cleared = False
                     for _ in range(15):
                         title = page.title()
                         h1_text = page.locator('h1').first.text_content(timeout=1000) if page.locator('h1').count() > 0 else ""
-                        if "Just a moment" not in title and "Cloudflare" not in title and (h1_text and "phongvu.vn" not in h1_text.lower()):
+                        
+                        is_cf = ("Just a moment" in title) or ("Cloudflare" in title) or (h1_text and "phongvu.vn" in h1_text.lower())
+                        if not is_cf:
+                            cf_cleared = True
                             break
                         time.sleep(2)
+                        
+                    if not cf_cleared:
+                        raise Exception("Kẹt ở Cloudflare quá lâu!")
                         
                     time.sleep(3)
                     success = True

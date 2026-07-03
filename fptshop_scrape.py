@@ -91,8 +91,11 @@ def crawl_fptshop_to_excel():
             if current_count == last_count:
                 clicked = False
                 try:
-                    # Dùng Playwright Locator để tìm và click (kích hoạt event React tốt hơn JS thuần)
-                    btn = page.locator("button:has-text('Xem thêm')").first
+                    # FPT Shop có nhiều nút "Xem thêm", nút hiển thị thêm sản phẩm luôn có chữ "kết quả" hoặc "sản phẩm"
+                    btn = page.locator("button:has-text('Xem thêm')").filter(has_text="kết quả").first
+                    if not btn.is_visible(timeout=500):
+                        btn = page.locator("button:has-text('Xem thêm')").first
+                        
                     if btn.is_visible(timeout=1500):
                         btn.scroll_into_view_if_needed()
                         btn.click()

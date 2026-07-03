@@ -91,17 +91,18 @@ def crawl_phongvu_to_excel():
             if current_count == last_count:
                 clicked = False
                 try:
-                    # Dùng Playwright Locator để tìm và click
-                    # Phong Vũ dùng thẻ div có chữ "Xem thêm sản phẩm" hoặc class "button-text"
-                    btn = page.locator("div:has-text('Xem thêm sản phẩm')").last
-                    if not btn.is_visible(timeout=1000):
+                    # Dùng get_by_text để tìm thẻ chứa text chính xác nhất (thường là thẻ sâu nhất)
+                    btn = page.get_by_text("Xem thêm sản phẩm", exact=False).last
+                    if btn.count() == 0:
                         btn = page.locator(".button-text:has-text('Xem thêm')").last
                         
-                    if btn.is_visible(timeout=1500):
+                    if btn.count() > 0:
                         btn.scroll_into_view_if_needed()
-                        btn.click()
+                        # Force=True để ép click kể cả khi Playwright nghĩ rằng nút bị che khuất
+                        btn.click(force=True)
                         clicked = True
-                except Exception:
+                except Exception as e:
+                    print(f"Lỗi click Phong Vũ: {e}")
                     pass
                 
                 if clicked:

@@ -72,85 +72,52 @@ def crawl_fptshop_to_excel():
             if "Just a moment" not in title and "Cloudflare" not in title:
                 break # Đã vượt qua thành công
                 
-        time.sleep(4)
-        print(f"Tiêu đề trang: {page.title()}")
-        close_popup(page)
+        # FPT Shop có sitemap riêng cho laptop, chứa toàn bộ link
+        sitemap_url = "https://fptshop.com.vn/products/sitemap-may-tinh-xach-tay.xml"
+        page.goto(sitemap_url, timeout=60000)
         
-        print("    >> Đang tải tất cả sản phẩm (bấm Xem thêm)...")
-        last_count = 0
-        loop_count = 0
-        
-        while True:
-            # Cuộn từng bước nhỏ để kích hoạt lazy load
-            page.evaluate("window.scrollBy(0, 1000);")
-            time.sleep(1)
-            page.evaluate("window.scrollBy(0, 1000);")
+        # Đợi Cloudflare nếu có
+        for _ in range(15):
+            title = page.title()
+            if "Just a moment" not in title and "Cloudflare" not in title:
+                break
             time.sleep(2)
             
-            current_count = page.evaluate("document.querySelectorAll('a[href^=\"/may-tinh-xach-tay/\"], a[href^=\"/laptop\"]').length")
-            
-            if current_count == last_count:
-                # Tìm nút "Xem thêm"
-                import re
-                btn = page.locator('button', has=page.locator('text=/(xem thêm.*kết quả|xem thêm.*sản phẩm)/i')).first
-                if btn.count() == 0:
-                    btn = page.locator('button', has_text=re.compile(r'xem thêm', re.IGNORECASE)).first
-                
-                if btn.count() > 0:
-                    try:
-                        btn.first.scroll_into_view_if_needed()
-                        btn.first.click(force=True)
-                        loop_count += 1
-                        print(f"    >> Đã bấm 'Xem thêm' lần {loop_count} (Tổng: {current_count} SP)")
-                        
-                        # Đợi kiên nhẫn hơn trên môi trường CI (tối đa 15 giây)
-                        wait_time = 0
-                        while wait_time < 15:
-                            time.sleep(3)
-                            wait_time += 3
-                            new_count = page.evaluate("document.querySelectorAll('a[href^=\"/may-tinh-xach-tay/\"], a[href^=\"/laptop\"]').length")
-                            if new_count > current_count:
-                                current_count = new_count
-                                break
-                                
-                        if new_count <= current_count:
-                            print("    >> Hết dữ liệu hoặc mạng chậm, dừng bấm.")
-                            break
-                    except Exception as e:
-                        print(f"    >> Lỗi khi bấm nút: {e}")
-                        break
-                else:
-                    break
-                    
-            last_count = current_count
-            
-            # Tránh lặp vô hạn (25 lần bấm = khoảng 1000 sản phẩm)
-            if loop_count > 25:
-                break
-            
-        # Cuộn thêm vài lần để đảm bảo render hết toàn bộ thẻ
-        for _ in range(5):
-            page.evaluate("window.scrollBy(0, 1000);")
-            time.sleep(1)
+        time.sleep(2)
         
-        html_content = page.content()
-        search_page = Adaptor(html_content, url=SEARCH_URL)
+        import re
+        xml_content = page.content()
         
-        # FPT Shop có thể chứa sản phẩm trong nhiều class khác nhau, lấy tất cả a tag có link laptop
-        product_blocks = search_page.css('a[href^="/may-tinh-xach-tay/"], a[href^="/laptop"]')
+        # Lấy tất cả các thẻ <loc> trong sitemap
+        sitemap_links = re.findall(r'<loc>(.*?)</loc>', xml_content)
         product_links = []
         
-        for a_tag in product_blocks:
-            relative_link = a_tag.css('::attr(href)').get(default="")
-            last_part = relative_link.split('/')[-1] if '/' in relative_link else relative_link
-            
-            # Loại bỏ các link danh mục hãng (chỉ có 1 vài chữ) hoặc phụ kiện. Link sản phẩm thật luôn có dấu gạch ngang và rất dài
-            if relative_link and '-' in last_part and len(last_part) > 15 and "linh-kien" not in relative_link and "phu-kien" not in relative_link:
-                full_link = BASE_URL + relative_link if relative_link.startswith('/') else relative_link
-                if full_link not in product_links:
-                    product_links.append(full_link)
+        for link in sitemap_links:
+            if '/may-tinh-xach-tay/' in link:
+                last_part = link.split('/')[-1]
+                # Lọc link hợp lệ (có dấu gạch ngang, dài hơn 20 ký tự, không phải link rác)
+                if '-' in last_part and len(last_part) > 20 and "linh-kien" not in link:
+                    product_links.append(link)
                     
-        print(f"--> Tìm thấy {len(product_links)} link laptop từ trang tìm kiếm FPTSHOP.")
+        # Nếu Playwright không đọc được XML (do bị format lại thành HTML), fallback qua BeautifulSoup
+        if not product_links:
+            try:
+                from bs4 import BeautifulSoup
+                soup = BeautifulSoup(xml_content, "html.parser")
+                for loc in soup.find_all("loc"):
+                    link = loc.text.strip()
+                    if '/may-tinh-xach-tay/' in link:
+                        last_part = link.split('/')[-1]
+                        if '-' in last_part and len(last_part) > 20 and "linh-kien" not in link:
+                            product_links.append(link)
+            except Exception:
+                pass
+                
+        # Loại bỏ trùng lặp
+        product_links = list(set(product_links))
+        
+        print(f"--> Tìm thấy {len(product_links)} link laptop từ sitemap FPTSHOP.")
+        
         if len(product_links) == 0:
             print("Không tìm thấy link, kết thúc.")
             browser.close()

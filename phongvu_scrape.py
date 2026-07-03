@@ -194,8 +194,20 @@ def crawl_phongvu_to_excel():
                     )
                     context = browser.new_context(viewport={"width": 1920, "height": 1080})
                     page = context.new_page()
+                    
+                    print("    🟢 Đang làm nóng lại phiên (xin cấp thẻ qua cổng CF ở trang chủ)...")
+                    try:
+                        page.goto("https://phongvu.vn", wait_until="domcontentloaded", timeout=40000)
+                        for _ in range(15):
+                            if "Just a moment" not in page.title() and "Cloudflare" not in page.title():
+                                break
+                            time.sleep(2)
+                        time.sleep(3)
+                    except:
+                        pass
+                        
                     consecutive_cf_fails = 0
-                    print("    🟢 Đã khởi động lại browser mới!")
+                    print("    🟢 Đã sẵn sàng cào tiếp!")
                 continue
             
             # Reset bộ đếm khi thành công

@@ -91,14 +91,16 @@ def crawl_fptshop_to_excel():
             if current_count == last_count:
                 clicked = False
                 try:
-                    # FPT Shop có nhiều nút "Xem thêm", nút hiển thị thêm sản phẩm luôn có chữ "kết quả" hoặc "sản phẩm"
-                    btn = page.locator("button:has-text('Xem thêm')").filter(has_text="kết quả").first
-                    if not btn.is_visible(timeout=500):
-                        btn = page.locator("button:has-text('Xem thêm')").first
+                    import re
+                    # FPT Shop: Nút thường chứa "Xem thêm ... kết quả"
+                    btn = page.get_by_text(re.compile(r'xem thêm.*kết quả|xem thêm.*sản phẩm', re.IGNORECASE)).locator("ancestor::button").first
+                    if btn.count() == 0:
+                        btn = page.locator("button", has_text=re.compile(r'xem thêm', re.IGNORECASE)).first
                         
-                    if btn.is_visible(timeout=1500):
-                        # Dùng evaluate click để xuyên thủng mọi lớp overlay chặn chuột
-                        btn.evaluate("node => node.click()")
+                    if btn.count() > 0:
+                        btn.first.scroll_into_view_if_needed()
+                        # Dùng Playwright native click với force=True để ép click qua React
+                        btn.first.click(force=True)
                         clicked = True
                 except Exception:
                     pass

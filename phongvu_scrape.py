@@ -97,14 +97,16 @@ def crawl_phongvu_to_excel():
                         btn = page.locator(".button-text:has-text('Xem thêm')").last
                         
                     if btn.count() > 0:
-                        # Sử dụng evaluate để thực thi Javascript trực tiếp: xóa target="_blank" và nhấp chuột
+                        btn.first.scroll_into_view_if_needed()
+                        # Sử dụng evaluate để thực thi Javascript trực tiếp: xóa target="_blank"
                         btn.first.evaluate('''node => {
                             let a = node.closest('a');
                             if (a) {
                                 a.removeAttribute('target');
                             }
-                            node.click();
                         }''')
+                        # Phải dùng native click của Playwright để kích hoạt event React (nếu dùng js click nó sẽ bị nhảy trang)
+                        btn.first.click(force=True)
                         clicked = True
                 except Exception as e:
                     print(f"Lỗi click Phong Vũ: {e}")

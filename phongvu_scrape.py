@@ -128,12 +128,11 @@ def crawl_phongvu_to_excel():
             browser.close()
             return
             
-        print("\n=== [LEVEL 1] TRUY CẬP TỪNG LINK ĐỂ TRÍCH XUẤT THÔNG TIN ===")
-        
         import random
         random.shuffle(product_links)
         
         final_results = []
+        consecutive_cf_fails = 0  # Đếm số lần bị Cloudflare chặn liên tiếp
             
         for i, link in enumerate(product_links, 1):
             print(f"[{i}/{len(product_links)}] Đang xử lý: {link}")
@@ -165,7 +164,7 @@ def crawl_phongvu_to_excel():
                 except Exception as e:
                     if retry < max_retries - 1:
                         print(f"    ! Lỗi goto (lần {retry+1}): {e}. Đang thử lại...")
-                        # Xoá phiên cũ để đổi IP session với Cloudflare
+                        # Xoá phiên cũ để đổi session với Cloudflare
                         try:
                             context.close()
                             time.sleep(1)
@@ -178,7 +177,29 @@ def crawl_phongvu_to_excel():
                         print(f"    ! Bỏ qua link do lỗi goto: {e}")
                         
             if not success:
+                consecutive_cf_fails += 1
+                
+                # Nếu bị chặn liên tiếp 3 link → tắt hẳn browser, nghỉ dài, mở lại
+                if consecutive_cf_fails >= 3:
+                    pause = random.uniform(120, 180)
+                    print(f"    🔴 Bị chặn {consecutive_cf_fails} lần liên tiếp! Tắt browser, nghỉ {pause:.0f}s...")
+                    try:
+                        browser.close()
+                    except:
+                        pass
+                    time.sleep(pause)
+                    browser = p.chromium.launch(
+                        headless=False,
+                        args=["--start-maximized", "--window-size=1920,1080"]
+                    )
+                    context = browser.new_context(viewport={"width": 1920, "height": 1080})
+                    page = context.new_page()
+                    consecutive_cf_fails = 0
+                    print("    🟢 Đã khởi động lại browser mới!")
                 continue
+            
+            # Reset bộ đếm khi thành công
+            consecutive_cf_fails = 0
                 
             try:
                 close_popup(page)
@@ -276,7 +297,6 @@ def crawl_phongvu_to_excel():
                 })
             except Exception as e:
                 print(f"    x Lỗi khi xử lý {link}: {e}")
-                # Phục hồi (Reset) tab trình duyệt
                 try:
                     context.close()
                     time.sleep(1)
@@ -288,11 +308,17 @@ def crawl_phongvu_to_excel():
             # Nghỉ ngẫu nhiên 3-6 giây để giống người thật
             time.sleep(random.uniform(3, 6))
             
-            # Mỗi 25 link, nghỉ dài 30-60 giây để Cloudflare "quên" mình
+            # Mỗi 25 link, nghỉ dài 30-60 giây và lưu kết quả trung gian
             if i % 25 == 0:
                 pause = random.uniform(30, 60)
                 print(f"    ⏸ Nghỉ giữa hiệp {pause:.0f}s để tránh bị chặn...")
                 time.sleep(pause)
+                
+                # Lưu kết quả trung gian (phòng trường hợp bị sập giữa chừng)
+                if final_results:
+                    df_temp = pd.DataFrame(final_results)
+                    df_temp.to_excel("laptop_phongvu_all.xlsx", index=False)
+                    print(f"    💾 Đã lưu tạm {len(final_results)} laptop.")
         
         browser.close()
         

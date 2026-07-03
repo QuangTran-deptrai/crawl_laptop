@@ -127,6 +127,7 @@ def crawl_fptshop_to_excel():
         
         print("\n=== [LEVEL 1] TRUY CẬP TỪNG LINK ĐỂ LẤY THÔNG TIN ===")
         final_results = []
+        consecutive_cf_fails = 0
         
         for i, url in enumerate(product_links):
             print(f"[{i+1}/{len(product_links)}] Đang xử lý: {url}")
@@ -159,7 +160,6 @@ def crawl_fptshop_to_excel():
                 except Exception as e:
                     if retry < max_retries - 1:
                         print(f"    ! Lỗi goto (lần {retry+1}): {e}. Đang thử lại...")
-                        # Xoá phiên (cookies) cũ để ép Cloudflare cấp session mới
                         try:
                             context.close()
                             time.sleep(1)
@@ -172,7 +172,29 @@ def crawl_fptshop_to_excel():
                         print(f"    ! Bỏ qua link do lỗi goto: {e}")
                         
             if not success:
+                consecutive_cf_fails += 1
+                
+                # Nếu bị chặn liên tiếp 3 link → tắt hẳn browser, nghỉ dài, mở lại
+                if consecutive_cf_fails >= 3:
+                    pause = random.uniform(120, 180)
+                    print(f"    🔴 Bị chặn {consecutive_cf_fails} lần liên tiếp! Tắt browser, nghỉ {pause:.0f}s...")
+                    try:
+                        browser.close()
+                    except:
+                        pass
+                    time.sleep(pause)
+                    browser = p.chromium.launch(
+                        headless=False,
+                        args=["--start-maximized", "--window-size=1920,1080"]
+                    )
+                    context = browser.new_context(viewport={"width": 1920, "height": 1080})
+                    page = context.new_page()
+                    consecutive_cf_fails = 0
+                    print("    🟢 Đã khởi động lại browser mới!")
                 continue
+            
+            # Reset bộ đếm khi thành công
+            consecutive_cf_fails = 0
             
             try:
                 crawl_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -297,7 +319,12 @@ def crawl_fptshop_to_excel():
                 pause = random.uniform(30, 60)
                 print(f"    ⏸ Nghỉ giữa hiệp {pause:.0f}s để tránh bị chặn...")
                 time.sleep(pause)
-            
+                
+                # Lưu kết quả trung gian (phòng trường hợp bị sập giữa chừng)
+                if final_results:
+                    df_temp = pd.DataFrame(final_results)
+                    df_temp.to_excel("laptop_fptshop_all.xlsx", index=False)
+                    print(f"    💾 Đã lưu tạm {len(final_results)} laptop.")
         browser.close()
         
         if final_results:

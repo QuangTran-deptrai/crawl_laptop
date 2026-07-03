@@ -134,10 +134,35 @@ def crawl_phongvu_to_excel():
             
         for i, link in enumerate(product_links, 1):
             print(f"[{i}/{len(product_links)}] Đang xử lý: {link}")
-            try:
-                page.goto(link, wait_until="domcontentloaded")
+            
+            max_retries = 3
+            success = False
+            for retry in range(max_retries):
+                try:
+                    page.goto(link, wait_until="domcontentloaded", timeout=40000)
+                    
+                    # Đợi Cloudflare check (nếu có)
+                    for _ in range(15):
+                        title = page.title()
+                        h1_text = page.locator('h1').first.text_content(timeout=1000) if page.locator('h1').count() > 0 else ""
+                        if "Just a moment" not in title and "Cloudflare" not in title and (h1_text and "phongvu.vn" not in h1_text.lower()):
+                            break
+                        time.sleep(2)
+                        
+                    time.sleep(3)
+                    success = True
+                    break
+                except Exception as e:
+                    if retry < max_retries - 1:
+                        print(f"    ! Lỗi goto (lần {retry+1}): {e}. Đang thử lại...")
+                        time.sleep(3)
+                    else:
+                        print(f"    ! Bỏ qua link do lỗi goto: {e}")
+                        
+            if not success:
+                continue
                 
-                time.sleep(3)
+            try:
                 close_popup(page)
                 
                 # Cuộn từ từ xuống cuối trang để ép load toàn bộ nội dung (đặc biệt là bảng thông số bị lazy-load)

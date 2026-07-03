@@ -134,6 +134,17 @@ def crawl_fptshop_to_excel():
             for retry in range(max_retries):
                 try:
                     page.goto(url, wait_until="domcontentloaded", timeout=40000)
+                    
+                    # Đợi Cloudflare check (nếu có)
+                    for _ in range(15):
+                        title = page.title()
+                        # Cloudflare page title is often 'Just a moment...' or domain name, and h1 is domain name
+                        # We wait if title contains Just a moment or Cloudflare, OR if the h1 tag contains exactly the domain
+                        h1_text = page.locator('h1').first.text_content(timeout=1000) if page.locator('h1').count() > 0 else ""
+                        if "Just a moment" not in title and "Cloudflare" not in title and (h1_text and "fptshop.com.vn" not in h1_text.lower()):
+                            break
+                        time.sleep(2)
+                        
                     time.sleep(2)
                     success = True
                     break

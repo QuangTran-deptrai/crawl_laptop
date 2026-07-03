@@ -73,8 +73,8 @@ def crawl_phongvu_to_excel():
         time.sleep(5)
         
         print("    >> Đang tải tất cả sản phẩm (scroll)...")
+        no_change_count = 0
         last_count = 0
-        load_more_count = 0
         
         while True:
             close_popup(page)
@@ -83,51 +83,20 @@ def crawl_phongvu_to_excel():
             page.evaluate("window.scrollBy(0, window.innerHeight);")
             time.sleep(1.5)
             page.evaluate("window.scrollTo(0, document.body.scrollHeight);")
-            time.sleep(2)
+            time.sleep(3)
             
             # Đếm sản phẩm hiện có
             current_count = page.evaluate("document.querySelectorAll('a[href*=\"-s\"]').length")
             
             if current_count == last_count:
-                clicked = False
-                try:
-                    # Dùng get_by_text để tìm thẻ chứa text chính xác nhất (thường là thẻ sâu nhất)
-                    btn = page.get_by_text("Xem thêm sản phẩm", exact=False).last
-                    if btn.count() == 0:
-                        btn = page.locator(".button-text:has-text('Xem thêm')").last
-                        
-                    if btn.count() > 0:
-                        btn.first.scroll_into_view_if_needed()
-                        # Sử dụng evaluate để thực thi Javascript trực tiếp: xóa target="_blank"
-                        btn.first.evaluate('''node => {
-                            let a = node.closest('a');
-                            if (a) {
-                                a.removeAttribute('target');
-                            }
-                        }''')
-                        # Phải dùng native click của Playwright để kích hoạt event React (nếu dùng js click nó sẽ bị nhảy trang)
-                        btn.first.click(force=True)
-                        clicked = True
-                except Exception as e:
-                    print(f"Lỗi click Phong Vũ: {e}")
-                    pass
-                
-                if clicked:
-                    load_more_count += 1
-                    print(f"    >> Đã bấm 'Xem thêm' lần {load_more_count}")
-                    time.sleep(5) 
-                    
-                    new_count = page.evaluate("document.querySelectorAll('a[href*=\"-s\"]').length")
-                    if new_count <= current_count:
-                        time.sleep(3)
-                        new_count = page.evaluate("document.querySelectorAll('a[href*=\"-s\"]').length")
-                        if new_count <= current_count:
-                            break
-                    current_count = new_count
-                else:
+                no_change_count += 1
+                if no_change_count >= 3:
                     break
-                    
-            last_count = current_count
+            else:
+                no_change_count = 0
+                last_count = current_count
+                
+        print(f"--> Tìm thấy {current_count} link laptop từ trang tìm kiếm Phong Vũ.")
             
         time.sleep(2)
         

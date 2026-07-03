@@ -278,14 +278,21 @@ def crawl_phongvu_to_excel():
                 print(f"    x Lỗi khi xử lý {link}: {e}")
                 # Phục hồi (Reset) tab trình duyệt
                 try:
-                    page.close()
+                    context.close()
+                    time.sleep(1)
+                    context = browser.new_context(viewport={"width": 1920, "height": 1080})
                     page = context.new_page()
                 except:
                     pass
             
-            # Nghỉ ngẫu nhiên 2-4 giây để giống người thật
-            import random
-            time.sleep(random.uniform(2, 4))
+            # Nghỉ ngẫu nhiên 3-6 giây để giống người thật
+            time.sleep(random.uniform(3, 6))
+            
+            # Mỗi 25 link, nghỉ dài 30-60 giây để Cloudflare "quên" mình
+            if i % 25 == 0:
+                pause = random.uniform(30, 60)
+                print(f"    ⏸ Nghỉ giữa hiệp {pause:.0f}s để tránh bị chặn...")
+                time.sleep(pause)
         
         browser.close()
         

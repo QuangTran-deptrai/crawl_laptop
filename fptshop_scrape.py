@@ -289,9 +289,14 @@ def crawl_fptshop_to_excel():
                 except Exception:
                     pass
                     
-            # Nghỉ ngẫu nhiên 2-4 giây để giống người thật, tránh bị block IP
-            import random
-            time.sleep(random.uniform(2, 4))
+            # Nghỉ ngẫu nhiên 3-6 giây để giống người thật
+            time.sleep(random.uniform(3, 6))
+            
+            # Mỗi 25 link, nghỉ dài 30-60 giây để Cloudflare "quên" mình
+            if (i + 1) % 25 == 0:
+                pause = random.uniform(30, 60)
+                print(f"    ⏸ Nghỉ giữa hiệp {pause:.0f}s để tránh bị chặn...")
+                time.sleep(pause)
             
         browser.close()
         

@@ -97,8 +97,8 @@ def crawl_fptshop_to_excel():
                         btn = page.locator("button:has-text('Xem thêm')").first
                         
                     if btn.is_visible(timeout=1500):
-                        btn.scroll_into_view_if_needed()
-                        btn.click()
+                        # Dùng evaluate click để xuyên thủng mọi lớp overlay chặn chuột
+                        btn.evaluate("node => node.click()")
                         clicked = True
                 except Exception:
                     pass

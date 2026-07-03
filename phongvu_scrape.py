@@ -97,9 +97,14 @@ def crawl_phongvu_to_excel():
                         btn = page.locator(".button-text:has-text('Xem thêm')").last
                         
                     if btn.count() > 0:
-                        btn.scroll_into_view_if_needed()
-                        # Force=True để ép click kể cả khi Playwright nghĩ rằng nút bị che khuất
-                        btn.click(force=True)
+                        # Sử dụng evaluate để thực thi Javascript trực tiếp: xóa target="_blank" và nhấp chuột
+                        btn.first.evaluate('''node => {
+                            let a = node.closest('a');
+                            if (a) {
+                                a.removeAttribute('target');
+                            }
+                            node.click();
+                        }''')
                         clicked = True
                 except Exception as e:
                     print(f"Lỗi click Phong Vũ: {e}")

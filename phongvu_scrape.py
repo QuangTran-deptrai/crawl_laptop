@@ -91,19 +91,16 @@ def crawl_phongvu_to_excel():
             if current_count == last_count:
                 clicked = False
                 try:
-                    # Tìm và click nút "Xem thêm sản phẩm"
-                    clicked = page.evaluate('''() => {
-                        let btns = document.querySelectorAll('button, div');
-                        for (let btn of btns) {
-                            let text = btn.innerText || "";
-                            if (text.includes('Xem thêm sản phẩm') || (btn.className && typeof btn.className === 'string' && btn.className.includes('button-text') && text.includes('Xem thêm'))) {
-                                btn.scrollIntoView({block: 'center'});
-                                btn.click();
-                                return true;
-                            }
-                        }
-                        return false;
-                    }''')
+                    # Dùng Playwright Locator để tìm và click
+                    # Phong Vũ dùng thẻ div có chữ "Xem thêm sản phẩm" hoặc class "button-text"
+                    btn = page.locator("div:has-text('Xem thêm sản phẩm')").last
+                    if not btn.is_visible(timeout=1000):
+                        btn = page.locator(".button-text:has-text('Xem thêm')").last
+                        
+                    if btn.is_visible(timeout=1500):
+                        btn.scroll_into_view_if_needed()
+                        btn.click()
+                        clicked = True
                 except Exception:
                     pass
                 

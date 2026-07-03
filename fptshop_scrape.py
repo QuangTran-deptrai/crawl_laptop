@@ -89,18 +89,16 @@ def crawl_fptshop_to_excel():
             current_count = page.evaluate("document.querySelectorAll('a[href^=\"/may-tinh-xach-tay/\"], a[href^=\"/laptop\"]').length")
             
             if current_count == last_count:
-                clicked = page.evaluate('''() => {
-                    let btns = document.querySelectorAll('button');
-                    for (let btn of btns) {
-                        if (btn.innerText && btn.innerText.toLowerCase().includes("xem thêm") && 
-                            (btn.innerText.toLowerCase().includes("kết quả") || btn.innerText.toLowerCase().includes("sản phẩm"))) {
-                            btn.scrollIntoView({block: "center"});
-                            btn.click();
-                            return true;
-                        }
-                    }
-                    return false;
-                }''')
+                clicked = False
+                try:
+                    # Dùng Playwright Locator để tìm và click (kích hoạt event React tốt hơn JS thuần)
+                    btn = page.locator("button:has-text('Xem thêm')").first
+                    if btn.is_visible(timeout=1500):
+                        btn.scroll_into_view_if_needed()
+                        btn.click()
+                        clicked = True
+                except Exception:
+                    pass
                 
                 if clicked:
                     load_more_count += 1

@@ -53,7 +53,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: excel-data-${{ matrix.script }}
-          path: '*.xlsx'
+          path: |
+            *.xlsx
+            *_pending.txt
           if-no-files-found: ignore
           retention-days: 1 # Chỉ lưu 1 ngày để dọn rác
 
@@ -63,6 +65,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write # Cấp quyền cho lệnh push lên Github
+      actions: write # Cấp quyền kích hoạt lại workflow
 
     steps:
       - name: Lấy mã nguồn
@@ -93,13 +96,25 @@ jobs:
           GOOGLE_SHEETS_WEBHOOK_URL: ${{ secrets.GOOGLE_SHEETS_WEBHOOK_URL }}
         run: python sync_excel_to_sheets.py
 
-      - name: Đẩy file Excel lưu trữ lên Github Repo
+      - name: Đẩy file Excel và trạng thái lên Github Repo
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
           
-          # Force add tất cả file xlsx tải về
-          git add -f *.xlsx
+          # Cập nhật tất cả file xlsx và pending.txt (bao gồm cả file bị xóa nếu đã cào xong)
+          git add -A *.xlsx || true
+          git add -A *_pending.txt || true
           
           # Chỉ commit nếu có sự thay đổi
-          git diff --quiet && git diff --staged --quiet || (git commit -m "Auto-update: Cập nhật dữ liệu Laptop mới nhất chạy song song [skip ci]" && git push)
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Auto-update: Lưu trạng thái cào dữ liệu và Excel [skip ci]" && git push)
+
+      - name: Tiếp tục cào nếu còn dang dở
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if ls *_pending.txt 1> /dev/null 2>&1; then
+            echo "Phát hiện file pending. Tự động kích hoạt chạy tiếp luồng mới..."
+            gh workflow run daily_scraper.yml
+          else
+            echo "🎉 TẤT CẢ CÁC WEB ĐÃ ĐƯỢC CÀO XONG 100%!"
+          fi

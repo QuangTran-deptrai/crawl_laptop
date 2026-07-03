@@ -36,7 +36,12 @@ def close_popup(page):
     except Exception:
         pass
 
+import os
+
 def crawl_fptshop_to_excel():
+    PENDING_FILE = "fptshop_pending.txt"
+    EXCEL_FILE = "laptop_fptshop_all.xlsx"
+    
     print("Khởi tạo Patchright cho FPT Shop...")
     
     with sync_playwright() as p:
@@ -49,8 +54,17 @@ def crawl_fptshop_to_excel():
         
         print("=== [LEVEL 0] ĐANG QUÉT TRANG TÌM KIẾM FPT SHOP ===")
         
-        # Thử tối đa 3 lần tải lại trang nếu bị kẹt ở Cloudflare
-        for attempt in range(3):
+        product_links = []
+        if os.path.exists(PENDING_FILE):
+            with open(PENDING_FILE, "r", encoding="utf-8") as f:
+                product_links = [line.strip() for line in f if line.strip()]
+                
+        if product_links:
+            print(f"\n=== TÌM THẤY {len(product_links)} LINK CÒN DANG DỞ TỪ LẦN CHẠY TRƯỚC ===")
+            print("Bỏ qua quét sitemap, cào tiếp luôn!")
+        else:
+            # Thử tối đa 3 lần tải lại trang nếu bị kẹt ở Cloudflare
+            for attempt in range(3):
             page.goto(SEARCH_URL, wait_until="domcontentloaded")
             print(f"Đang kiểm tra Cloudflare (lần thử {attempt + 1})...")
             
@@ -126,7 +140,16 @@ def crawl_fptshop_to_excel():
         random.shuffle(product_links)
         
         print("\n=== [LEVEL 1] TRUY CẬP TỪNG LINK ĐỂ LẤY THÔNG TIN ===")
+        
         final_results = []
+        if os.path.exists(EXCEL_FILE):
+            try:
+                existing_df = pd.read_excel(EXCEL_FILE)
+                final_results = existing_df.to_dict('records')
+                print(f"Đã nạp {len(final_results)} laptop từ file Excel cũ để ghi nối tiếp.")
+            except Exception as e:
+                print(f"Lỗi đọc file Excel cũ: {e}")
+                
         consecutive_cf_fails = 0
         
         for i, url in enumerate(product_links):
@@ -180,6 +203,12 @@ def crawl_fptshop_to_excel():
                 # Nếu bị chặn liên tiếp 3 link → Cloudflare đã chặn IP cứng, thoát script để lưu data
                 if consecutive_cf_fails >= 3:
                     print(f"\n    🔴 Bị Cloudflare chặn cứng IP sau {i+1} link! Dừng script sớm để bảo toàn dữ liệu đã cào.")
+                    # Lưu các link chưa cào
+                    remaining_links = product_links[i - (consecutive_cf_fails - 1):]
+                    with open(PENDING_FILE, "w", encoding="utf-8") as f:
+                        for r_link in remaining_links:
+                            f.write(r_link + "\n")
+                    print(f"    💾 Đã lưu {len(remaining_links)} link dang dở vào {PENDING_FILE}")
                     break
                 continue
             
@@ -313,14 +342,19 @@ def crawl_fptshop_to_excel():
                 # Lưu kết quả trung gian (phòng trường hợp bị sập giữa chừng)
                 if final_results:
                     df_temp = pd.DataFrame(final_results)
-                    df_temp.to_excel("laptop_fptshop_all.xlsx", index=False)
+                    df_temp.to_excel(EXCEL_FILE, index=False)
                     print(f"    💾 Đã lưu tạm {len(final_results)} laptop.")
         browser.close()
         
+        # Nếu hoàn thành 100% link mà không văng ngang
+        if consecutive_cf_fails < 3 and os.path.exists(PENDING_FILE):
+            os.remove(PENDING_FILE)
+            print("    ✨ Đã hoàn thành 100% danh sách, xóa file pending!")
+        
         if final_results:
             df = pd.DataFrame(final_results)
-            df.to_excel("laptop_fptshop_all.xlsx", index=False)
-            print(f"\n=== HOÀN THÀNH! Đã lưu {len(final_results)} laptop vào 'laptop_fptshop_all.xlsx' ===")
+            df.to_excel(EXCEL_FILE, index=False)
+            print(f"\n=== HOÀN THÀNH! Đã lưu {len(final_results)} laptop vào '{EXCEL_FILE}' ===")
         else:
             print("\n=== LỖI: Không có dữ liệu nào được thu thập. ===")
 

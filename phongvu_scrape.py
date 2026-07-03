@@ -46,7 +46,7 @@ def crawl_phongvu_to_excel():
         page = context.new_page()
         
         print("=== [LEVEL 0] ĐANG QUÉT TRANG TÌM KIẾM PHONG VŨ ===")
-        
+            
         # Thử tối đa 3 lần tải lại trang nếu bị kẹt ở Cloudflare
         for attempt in range(3):
             page.goto(SEARCH_URL, wait_until="domcontentloaded")

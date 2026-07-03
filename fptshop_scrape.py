@@ -93,9 +93,9 @@ def crawl_fptshop_to_excel():
                 try:
                     import re
                     # FPT Shop: Nút thường chứa "Xem thêm ... kết quả"
-                    btn = page.get_by_text(re.compile(r'xem thêm.*kết quả|xem thêm.*sản phẩm', re.IGNORECASE)).locator("ancestor::button").first
+                    btn = page.locator('button', has=page.locator('text=/(xem thêm.*kết quả|xem thêm.*sản phẩm)/i')).first
                     if btn.count() == 0:
-                        btn = page.locator("button", has_text=re.compile(r'xem thêm', re.IGNORECASE)).first
+                        btn = page.locator('button', has_text=re.compile(r'xem thêm', re.IGNORECASE)).first
                         
                     if btn.count() > 0:
                         btn.first.scroll_into_view_if_needed()

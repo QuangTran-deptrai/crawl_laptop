@@ -102,7 +102,6 @@ def crawl_fptshop_to_excel():
         # Nếu Playwright không đọc được XML (do bị format lại thành HTML), fallback qua BeautifulSoup
         if not product_links:
             try:
-                from bs4 import BeautifulSoup
                 soup = BeautifulSoup(xml_content, "html.parser")
                 for loc in soup.find_all("loc"):
                     link = loc.text.strip()
@@ -126,14 +125,32 @@ def crawl_fptshop_to_excel():
         print("\n=== [LEVEL 1] TRUY CẬP TỪNG LINK ĐỂ LẤY THÔNG TIN ===")
         final_results = []
         
-        for index, url in enumerate(product_links, start=1):
-            print(f"[{index}/{len(product_links)}] Đang xử lý: {url}")
+        for i, url in enumerate(product_links):
+            print(f"[{i+1}/{len(product_links)}] Đang xử lý: {url}")
+            
+            max_retries = 3
+            success = False
+            
+            for retry in range(max_retries):
+                try:
+                    page.goto(url, wait_until="domcontentloaded", timeout=40000)
+                    time.sleep(2)
+                    success = True
+                    break
+                except Exception as e:
+                    if retry < max_retries - 1:
+                        print(f"    ! Lỗi goto (lần {retry+1}): {e}. Đang thử lại...")
+                        time.sleep(3)
+                    else:
+                        print(f"    ! Bỏ qua link do lỗi goto: {e}")
+                        
+            if not success:
+                continue
             
             try:
                 crawl_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 
-                page.goto(url, wait_until="domcontentloaded")
-                time.sleep(4)
+                # Cố gắng đóng popup (nếu có)
                 close_popup(page)
                 
                 # Cuộn trang sâu hơn để hiển thị bảng thông số

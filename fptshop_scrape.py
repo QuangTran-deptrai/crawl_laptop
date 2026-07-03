@@ -98,19 +98,26 @@ def crawl_fptshop_to_excel():
                 
                 if btn.count() > 0:
                     try:
+                        btn.first.scroll_into_view_if_needed()
                         btn.first.click(force=True)
                         loop_count += 1
                         print(f"    >> Đã bấm 'Xem thêm' lần {loop_count} (Tổng: {current_count} SP)")
-                        time.sleep(4)
                         
-                        new_count = page.evaluate("document.querySelectorAll('a[href^=\"/may-tinh-xach-tay/\"], a[href^=\"/laptop\"]').length")
-                        if new_count <= current_count:
+                        # Đợi kiên nhẫn hơn trên môi trường CI (tối đa 15 giây)
+                        wait_time = 0
+                        while wait_time < 15:
                             time.sleep(3)
+                            wait_time += 3
                             new_count = page.evaluate("document.querySelectorAll('a[href^=\"/may-tinh-xach-tay/\"], a[href^=\"/laptop\"]').length")
-                            if new_count <= current_count:
+                            if new_count > current_count:
+                                current_count = new_count
                                 break
-                        current_count = new_count
-                    except Exception:
+                                
+                        if new_count <= current_count:
+                            print("    >> Hết dữ liệu hoặc mạng chậm, dừng bấm.")
+                            break
+                    except Exception as e:
+                        print(f"    >> Lỗi khi bấm nút: {e}")
                         break
                 else:
                     break

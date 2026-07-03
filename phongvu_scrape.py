@@ -264,6 +264,10 @@ def crawl_phongvu_to_excel():
                     page = context.new_page()
                 except:
                     pass
+            
+            # Nghỉ ngẫu nhiên 2-4 giây để giống người thật
+            import random
+            time.sleep(random.uniform(2, 4))
         
         browser.close()
         

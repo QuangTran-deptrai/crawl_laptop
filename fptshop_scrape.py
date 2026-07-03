@@ -262,7 +262,8 @@ def crawl_fptshop_to_excel():
                 print(f"    ✓ Đã lấy: {product_name}")
                 
             except Exception as e:
-                print(f"    ! Gặp lỗi khi xử lý link {url}: {e}")
+                print(f"    x Lỗi trích xuất: {e}")
+                
                 # Phục hồi (Reset) lại tab trình duyệt nếu trang bị lỗi
                 try:
                     page.close()
@@ -270,7 +271,11 @@ def crawl_fptshop_to_excel():
                     context.on("page", lambda p: p.close() if p != page else None)
                 except Exception:
                     pass
-                
+                    
+            # Nghỉ ngẫu nhiên 2-4 giây để giống người thật, tránh bị block IP
+            import random
+            time.sleep(random.uniform(2, 4))
+            
         browser.close()
         
         if final_results:

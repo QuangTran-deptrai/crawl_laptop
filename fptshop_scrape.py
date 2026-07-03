@@ -78,38 +78,45 @@ def crawl_fptshop_to_excel():
         
         print("    >> Đang tải tất cả sản phẩm (bấm Xem thêm)...")
         load_more_count = 0
-        retry_count = 0
+        last_count = 0
+        
         while True:
             page.evaluate("window.scrollBy(0, 1000);")
             time.sleep(1)
             page.evaluate("window.scrollBy(0, 1000);")
             time.sleep(2)
             
-            clicked = page.evaluate('''() => {
-                let btns = document.querySelectorAll('button');
-                for (let btn of btns) {
-                    if (btn.innerText && btn.innerText.toLowerCase().includes("xem thêm") && 
-                        (btn.innerText.toLowerCase().includes("kết quả") || btn.innerText.toLowerCase().includes("sản phẩm"))) {
-                        btn.scrollIntoView({block: "center"});
-                        btn.click();
-                        return true;
-                    }
-                }
-                return false;
-            }''')
+            current_count = page.evaluate("document.querySelectorAll('a[href^=\"/may-tinh-xach-tay/\"], a[href^=\"/laptop\"]').length")
             
-            if clicked:
-                load_more_count += 1
-                retry_count = 0
-                print(f"    >> Đã bấm 'Xem thêm' lần {load_more_count}")
-                time.sleep(4)
-                continue
-            else:
-                retry_count += 1
-                if retry_count >= 3:
+            if current_count == last_count:
+                clicked = page.evaluate('''() => {
+                    let btns = document.querySelectorAll('button');
+                    for (let btn of btns) {
+                        if (btn.innerText && btn.innerText.toLowerCase().includes("xem thêm") && 
+                            (btn.innerText.toLowerCase().includes("kết quả") || btn.innerText.toLowerCase().includes("sản phẩm"))) {
+                            btn.scrollIntoView({block: "center"});
+                            btn.click();
+                            return true;
+                        }
+                    }
+                    return false;
+                }''')
+                
+                if clicked:
+                    load_more_count += 1
+                    print(f"    >> Đã bấm 'Xem thêm' lần {load_more_count}")
+                    time.sleep(4)
+                    new_count = page.evaluate("document.querySelectorAll('a[href^=\"/may-tinh-xach-tay/\"], a[href^=\"/laptop\"]').length")
+                    if new_count <= current_count:
+                        time.sleep(3)
+                        new_count = page.evaluate("document.querySelectorAll('a[href^=\"/may-tinh-xach-tay/\"], a[href^=\"/laptop\"]').length")
+                        if new_count <= current_count:
+                            break
+                    current_count = new_count
+                else:
                     break
-                print(f"    >> Chờ tải thêm (thử lại {retry_count}/3)...")
-                time.sleep(3)
+                    
+            last_count = current_count
             
         # Cuộn thêm vài lần để đảm bảo render hết toàn bộ thẻ
         for _ in range(5):

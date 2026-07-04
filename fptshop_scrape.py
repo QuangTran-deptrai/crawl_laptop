@@ -58,70 +58,69 @@ def crawl_fptshop_to_excel(chunk=1, total_chunks=1):
         product_links = []
         
         # Bắt đầu quét sitemap
-            # Thử tối đa 3 lần tải lại trang nếu bị kẹt ở Cloudflare
-            for attempt in range(3):
-                page.goto(SEARCH_URL, wait_until="domcontentloaded")
-                print(f"Đang kiểm tra Cloudflare (lần thử {attempt + 1})...")
-                
-                for _ in range(15):
-                    title = page.title()
-                    if "Just a moment" in title or "Cloudflare" in title:
-                        time.sleep(2)
-                        try:
-                            # Dùng Playwright frame_locator để click vào Turnstile
-                            cb = page.frame_locator("iframe").locator("input").first
-                            if cb.is_visible(timeout=1000):
-                                cb.click(force=True)
-                        except Exception:
-                            pass
-                    else:
-                        break
-                        
-                title = page.title()
-                if "Just a moment" not in title and "Cloudflare" not in title:
-                    break # Đã vượt qua thành công
-                    
-            # FPT Shop có sitemap riêng cho laptop, chứa toàn bộ link
-            sitemap_url = "https://fptshop.com.vn/products/sitemap-may-tinh-xach-tay.xml"
-            page.goto(sitemap_url, timeout=60000)
+        # Thử tối đa 3 lần tải lại trang nếu bị kẹt ở Cloudflare
+        for attempt in range(3):
+            page.goto(SEARCH_URL, wait_until="domcontentloaded")
+            print(f"Đang kiểm tra Cloudflare (lần thử {attempt + 1})...")
             
-            # Đợi Cloudflare nếu có
             for _ in range(15):
                 title = page.title()
-                if "Just a moment" not in title and "Cloudflare" not in title:
+                if "Just a moment" in title or "Cloudflare" in title:
+                    time.sleep(2)
+                    try:
+                        # Dùng Playwright frame_locator để click vào Turnstile
+                        cb = page.frame_locator("iframe").locator("input").first
+                        if cb.is_visible(timeout=1000):
+                            cb.click(force=True)
+                    except Exception:
+                        pass
+                else:
                     break
-                time.sleep(2)
+                    
+            title = page.title()
+            if "Just a moment" not in title and "Cloudflare" not in title:
+                break # Đã vượt qua thành công
                 
+        # FPT Shop có sitemap riêng cho laptop, chứa toàn bộ link
+        sitemap_url = "https://fptshop.com.vn/products/sitemap-may-tinh-xach-tay.xml"
+        page.goto(sitemap_url, timeout=60000)
+        
+        # Đợi Cloudflare nếu có
+        for _ in range(15):
+            title = page.title()
+            if "Just a moment" not in title and "Cloudflare" not in title:
+                break
             time.sleep(2)
             
-            import re
-            xml_content = page.content()
-            
-            # Lấy tất cả các thẻ <loc> trong sitemap
-            sitemap_links = re.findall(r'<loc>(.*?)</loc>', xml_content)
-            
-            for link in sitemap_links:
-                if '/may-tinh-xach-tay/' in link:
-                    last_part = link.split('/')[-1]
-                    # Lọc link hợp lệ (có dấu gạch ngang, dài hơn 20 ký tự, không phải link rác)
-                    if '-' in last_part and len(last_part) > 20 and "linh-kien" not in link:
-                        product_links.append(link)
-                        
-            # Nếu Playwright không đọc được XML (do bị format lại thành HTML), fallback qua BeautifulSoup
-            if not product_links:
-                try:
-                    soup = BeautifulSoup(xml_content, "html.parser")
-                    for loc in soup.find_all("loc"):
-                        link = loc.text.strip()
-                        if '/may-tinh-xach-tay/' in link:
-                            last_part = link.split('/')[-1]
-                            if '-' in last_part and len(last_part) > 20 and "linh-kien" not in link:
-                                product_links.append(link)
-                except Exception:
-                    pass
+        time.sleep(2)
+        
+        import re
+        xml_content = page.content()
+        
+        # Lấy tất cả các thẻ <loc> trong sitemap
+        locs = re.findall(r'<loc>(.*?)</loc>', xml_content)
+        for loc in locs:
+            if '/may-tinh-xach-tay/' in loc:
+                # Tránh các link rác
+                last_part = loc.split('/')[-1]
+                if '-' in last_part and len(last_part) > 20 and "linh-kien" not in loc:
+                    product_links.append(loc)
                     
-            # Loại bỏ trùng lặp và sắp xếp để đảm bảo thứ tự
-            product_links = sorted(list(set(product_links)))
+        # Nếu Playwright không đọc được XML (do bị format lại thành HTML), fallback qua BeautifulSoup
+        if not product_links:
+            try:
+                soup = BeautifulSoup(xml_content, "html.parser")
+                for loc in soup.find_all("loc"):
+                    link = loc.text.strip()
+                    if '/may-tinh-xach-tay/' in link:
+                        last_part = link.split('/')[-1]
+                        if '-' in last_part and len(last_part) > 20 and "linh-kien" not in link:
+                            product_links.append(link)
+            except Exception:
+                pass
+                
+        # Loại bỏ trùng lặp và sắp xếp để đảm bảo thứ tự
+        product_links = sorted(list(set(product_links)))
         
         print(f"--> Tìm thấy tổng cộng {len(product_links)} link laptop từ sitemap FPTSHOP.")
         

@@ -1,6 +1,8 @@
 import pandas as pd
 from datetime import datetime
 import time
+import argparse
+import math
 from patchright.sync_api import sync_playwright
 from scrapling.parser import Adaptor
 
@@ -32,14 +34,10 @@ def close_popup(page):
             document.querySelectorAll('.popup-login-mdm, .popup__login__overlay, .popup__detail__overlay, .popup-voucher-block').forEach(el => {
                 el.style.display = 'none';
             });
-import time
-from datetime import datetime
-import pandas as pd
-import argparse
-import math
-
-# Playwright & Patchright
-from playwright.sync_api import sync_playwright
+            document.body.style.overflow = 'auto';
+        }''')
+    except Exception:
+        pass
 
 def crawl_tgdd_to_excel(chunk=1, total_chunks=1):
     print("=== [LEVEL 0] ĐANG QUÉT TRANG TÌM KIẾM TGDĐ ===")

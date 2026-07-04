@@ -1,6 +1,8 @@
 import pandas as pd
 from datetime import datetime
 import time
+import argparse
+import math
 from patchright.sync_api import sync_playwright
 from scrapling.parser import Adaptor
 
@@ -52,16 +54,6 @@ def close_popup(page):
         }''')
     except Exception:
         pass
-
-import time
-from datetime import datetime
-import pandas as pd
-import argparse
-import math
-from parsel import Selector as Adaptor
-
-# Playwright & Patchright
-from playwright.sync_api import sync_playwright
 
 def crawl_cellphones_to_excel(chunk=1, total_chunks=1):
     print("=== [LEVEL 0] ĐANG QUÉT TRANG TÌM KIẾM CELLPHONES ===")

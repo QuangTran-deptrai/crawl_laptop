@@ -67,57 +67,71 @@ def crawl_tgdd_to_excel(chunk=1, total_chunks=1):
             with open(PENDING_FILE, "r", encoding="utf-8") as f:
                 product_links = [line.strip() for line in f if line.strip()]
         else:
-            # TGDĐ thường kiểm tra location, ta set mặc định hoặc cứ bypass
-            page.goto(SEARCH_URL, wait_until="domcontentloaded")
-            time.sleep(3)
-            close_popup(page)
-            
-            print("    >> Đang tải tất cả sản phẩm (bấm Xem thêm)...")
-            load_more_count = 0
-            while True:
-                page.evaluate("window.scrollTo(0, document.body.scrollHeight);")
+            for attempt in range(3):
+                product_links = []
+                # TGDĐ thường kiểm tra location, ta set mặc định hoặc cứ bypass
+                page.goto(SEARCH_URL, wait_until="domcontentloaded")
+                time.sleep(3)
+                close_popup(page)
+                
+                print(f"    >> Đang tải tất cả sản phẩm (bấm Xem thêm)... (Lần thử {attempt + 1}/3)")
+                load_more_count = 0
+                while True:
+                    page.evaluate("window.scrollTo(0, document.body.scrollHeight);")
+                    time.sleep(2)
+                    
+                    try:
+                        clicked = page.evaluate('''() => {
+                            let btns = document.querySelectorAll('.view-more a, .see-more-btn');
+                            for (let btn of btns) {
+                                let text = (btn.innerText || "").toLowerCase();
+                                // Phải đảm bảo nút thực sự hiển thị (không bị display: none) và chứa chữ "laptop"
+                                if (btn.offsetWidth > 0 && btn.offsetHeight > 0 && text.includes("xem thêm") && text.includes("laptop")) {
+                                    btn.click();
+                                    return true;
+                                }
+                            }
+                            return false;
+                        }''')
+                        
+                        if clicked:
+                            load_more_count += 1
+                            print(f"    >> Đã bấm 'Xem thêm' lần {load_more_count}")
+                            time.sleep(3)
+                            continue
+                    except Exception:
+                        pass
+                        
+                    break # Thoát nếu không tìm thấy nút hoặc không bấm được nữa
+                    
                 time.sleep(2)
                 
-                try:
-                    clicked = page.evaluate('''() => {
-                        let btns = document.querySelectorAll('.view-more a, .see-more-btn');
-                        for (let btn of btns) {
-                            let text = (btn.innerText || "").toLowerCase();
-                            // Phải đảm bảo nút thực sự hiển thị (không bị display: none) và chứa chữ "laptop"
-                            if (btn.offsetWidth > 0 && btn.offsetHeight > 0 && text.includes("xem thêm") && text.includes("laptop")) {
-                                btn.click();
-                                return true;
-                            }
-                        }
-                        return false;
-                    }''')
-                    
-                    if clicked:
-                        load_more_count += 1
-                        print(f"    >> Đã bấm 'Xem thêm' lần {load_more_count}")
-                        time.sleep(3)
-                        continue
-                except Exception:
-                    pass
-                    
-                break # Thoát nếu không tìm thấy nút hoặc không bấm được nữa
+                html_content = page.content()
+                search_page = Adaptor(html_content, url=SEARCH_URL)
                 
-            time.sleep(2)
+                # Link sản phẩm nằm trong .item a.main-contain
+                product_blocks = search_page.css('li.item a.main-contain')
+                
+                for a_tag in product_blocks:
+                    relative_link = a_tag.css('::attr(href)').get(default="")
+                    if relative_link:
+                        full_link = BASE_URL + relative_link if relative_link.startswith('/') else relative_link
+                        if full_link not in product_links:
+                            product_links.append(full_link)
+                            
+                print(f"--> Tìm thấy tổng cộng {len(product_links)} link laptop từ trang tìm kiếm TGDĐ.")
+                
+                if len(product_links) > 0:
+                    break
+                else:
+                    print("    ! Mảnh này không tìm thấy link nào ở trang chủ, có thể bị chặn. Đang thử lại...")
+                    time.sleep(5)
             
-            html_content = page.content()
-            search_page = Adaptor(html_content, url=SEARCH_URL)
-            
-            # Link sản phẩm nằm trong .item a.main-contain
-            product_blocks = search_page.css('li.item a.main-contain')
-            
-            for a_tag in product_blocks:
-                relative_link = a_tag.css('::attr(href)').get(default="")
-                if relative_link:
-                    full_link = BASE_URL + relative_link if relative_link.startswith('/') else relative_link
-                    if full_link not in product_links:
-                        product_links.append(full_link)
-                        
-            print(f"--> Tìm thấy tổng cộng {len(product_links)} link laptop từ trang tìm kiếm TGDĐ.")
+            if len(product_links) == 0:
+                print("❌ Lỗi: Đã thử 3 lần nhưng không thể tải danh sách sản phẩm TGDĐ. Dừng script.")
+                browser.close()
+                import sys
+                sys.exit(1)
             
             # Sort danh sách để đảm bảo phân rã đều giữa các shard
             product_links = sorted(list(set(product_links)))

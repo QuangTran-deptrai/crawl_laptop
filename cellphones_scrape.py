@@ -10,8 +10,6 @@ BASE_URL = "https://cellphones.com.vn"
 SEARCH_URL = "https://cellphones.com.vn/laptop.html"
 
 def calculate_discount(current_price, original_price, scraped_discount=""):
-    if scraped_discount and str(scraped_discount).strip():
-        return str(scraped_discount).strip()
     try:
         import re
         c = int(re.sub(r'[^\d]', '', str(current_price)))
@@ -21,6 +19,13 @@ def calculate_discount(current_price, original_price, scraped_discount=""):
             return f"-{percent}%"
     except Exception:
         pass
+        
+    if scraped_discount and str(scraped_discount).strip():
+        d = str(scraped_discount).strip()
+        if d.endswith('%') and not d.startswith('-'):
+            d = f"-{d}"
+        return d
+        
     return ""
 
 def close_popup(page):
@@ -218,13 +223,14 @@ def crawl_cellphones_to_excel(chunk=1, total_chunks=1):
                 # 3. Giá hiện tại & Giá gốc (Chỉ quét trong khung giá chính để tránh lấy nhầm giá phụ kiện)
                 current_price = ""
                 original_price = ""
+                discount_percent = ""
                 price_box = prod_page.css('.box-product-price-wrapper, .box-info__box-price, .tpt-box-price')
                 if price_box:
                     main_box = price_box[0]
                     current_price = main_box.css('.tpt-price::text, .product__price--show::text, .sale-price::text').get(default="").strip()
                     original_price = main_box.css('.tpt-price-through::text, .product__price--through::text, .base-price::text').get(default="").strip()
+                    discount_percent = main_box.css('.product__price--percent-detail span::text').get(default="").strip()
                     
-                discount_percent = prod_page.css('.box-info__box-price .product__price--percent-detail span::text').get(default="").strip()
                 discount_percent = calculate_discount(current_price, original_price, discount_percent)
                 
                 # 4. Khuyến mãi

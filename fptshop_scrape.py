@@ -9,8 +9,6 @@ BASE_URL = "https://fptshop.com.vn"
 SEARCH_URL = "https://fptshop.com.vn/may-tinh-xach-tay"
 
 def calculate_discount(current_price, original_price, scraped_discount=""):
-    if scraped_discount and str(scraped_discount).strip():
-        return str(scraped_discount).strip()
     try:
         import re
         c = int(re.sub(r'[^\d]', '', str(current_price)))
@@ -20,6 +18,13 @@ def calculate_discount(current_price, original_price, scraped_discount=""):
             return f"-{percent}%"
     except Exception:
         pass
+        
+    if scraped_discount and str(scraped_discount).strip():
+        d = str(scraped_discount).strip()
+        if d.endswith('%') and not d.startswith('-'):
+            d = f"-{d}"
+        return d
+        
     return ""
 
 def close_popup(page):

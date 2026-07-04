@@ -50,12 +50,13 @@ jobs:
         continue-on-error: true # Cho phép lỗi (ví dụ không tìm thấy element) để không sập workflow
         run: xvfb-run python ${{ matrix.script }} --chunk ${{ matrix.chunk }} --total-chunks 4
 
-      - name: Tải file Excel lên bộ nhớ tạm
+      - name: Tải file Excel và trạng thái lên bộ nhớ tạm
         uses: actions/upload-artifact@v4
         with:
           name: excel-data-${{ matrix.script }}-chunk-${{ matrix.chunk }}
           path: |
             *.xlsx
+            *_pending*.txt
           if-no-files-found: ignore
           retention-days: 1 # Chỉ lưu 1 ngày để dọn rác
 
@@ -70,6 +71,9 @@ jobs:
     steps:
       - name: Lấy mã nguồn
         uses: actions/checkout@v4
+
+      - name: Xóa pending cũ nội bộ để cập nhật trạng thái mới nhất
+        run: rm -f *_pending*.txt || true
 
       - name: Cài đặt Python 3.11
         uses: actions/setup-python@v5
@@ -88,27 +92,39 @@ jobs:
           pattern: excel-data-*
           merge-multiple: true # Gộp chung tất cả file xlsx vào cùng 1 thư mục hiện tại
 
-      - name: Gộp các mảnh dữ liệu (Merge Chunks)
-        run: python chunk_merger.py
-
-      - name: Đẩy lên Google Sheets và Báo cáo Telegram
+      - name: Kiểm tra trạng thái và Quyết định (Merge hay Retry)
         env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           GOOGLE_SHEETS_WEBHOOK_URL: ${{ secrets.GOOGLE_SHEETS_WEBHOOK_URL }}
-        run: python sync_excel_to_sheets.py
-
-      - name: Đẩy file Excel và trạng thái lên Github Repo
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
           
-          # Cập nhật tất cả file xlsx
-          git add -A *.xlsx || true
-          
-          # Dọn dẹp file pending cũ nếu còn sót lại
-          git rm *_pending.txt --ignore-unmatch || true
-          
-          # Chỉ commit nếu có sự thay đổi
-          git diff --quiet && git diff --staged --quiet || (git commit -m "Auto-update: Lưu trạng thái cào dữ liệu và Excel (Matrix Sharding) [skip ci]" && git push)
+          if ls *_pending*.txt 1> /dev/null 2>&1; then
+            echo "Phát hiện còn file pending. Lưu Excel tạm và kích hoạt Retry..."
+            git add -A *.xlsx || true
+            git add -A *_pending*.txt || true
+            git diff --quiet && git diff --staged --quiet || (git commit -m "Auto-update: Lưu trạng thái dang dở (Matrix Sharding) [skip ci]" && git push)
+            
+            # Kích hoạt lại chính workflow này
+            gh workflow run daily_scraper.yml
+          else
+            echo "🎉 TẤT CẢ CÁC WEB ĐÃ ĐƯỢC CÀO XONG 100%!"
+            echo "Tiến hành gộp mảnh và đẩy lên Google Sheets..."
+            
+            # Xóa sạch pending trên Git (nếu có)
+            git rm *_pending*.txt --ignore-unmatch || true
+            
+            # Gộp
+            python chunk_merger.py
+            
+            # Đẩy lên GG Sheets
+            python sync_excel_to_sheets.py
+            
+            # Commit file all
+            git add -A *.xlsx || true
+            git diff --quiet && git diff --staged --quiet || (git commit -m "Auto-update: Hoàn thành cào dữ liệu [skip ci]" && git push)
+          fi

@@ -1,0 +1,1 @@
+roductAttribute\":null,\"productAttributeHighlight\":[{\"isHighlightSpecs\":true,\"propertyName\":\"cpuTechnology\",\"displayName\":\"CPU\",\"description\":null,\"question\":\"\u003cp\u003eNên chọn loại CPU nào?\u

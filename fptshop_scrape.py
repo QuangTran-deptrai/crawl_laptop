@@ -39,9 +39,20 @@ def close_popup(page):
 import os
 import math
 import argparse
+import glob
+import time
 
 def crawl_fptshop_to_excel(chunk=1, total_chunks=1):
-    EXCEL_FILE = f"laptop_fptshop_chunk_{chunk}.xlsx"
+    timestamp = int(time.time())
+    EXCEL_FILE = f"laptop_fptshop_chunk_{chunk}_{timestamp}.xlsx"
+    PENDING_FILE = f"fptshop_pending_chunk_{chunk}.txt"
+    
+    # Kiểm tra xem đây có phải là một lần chạy Retry hay không
+    is_retry_run = len(glob.glob("*_pending_chunk_*.txt")) > 0
+    
+    if is_retry_run and not os.path.exists(PENDING_FILE):
+        print(f"Mảnh {chunk} đã hoàn thành từ trước. Bỏ qua để tiết kiệm tài nguyên.")
+        return
     
     print("Khởi tạo Patchright cho FPT Shop...")
     
@@ -57,7 +68,12 @@ def crawl_fptshop_to_excel(chunk=1, total_chunks=1):
         
         product_links = []
         
-        # Bắt đầu quét sitemap
+        if os.path.exists(PENDING_FILE):
+            print(f"=== ĐANG CHẠY TIẾP TỤC MẢNH {chunk} (RETRY) ===")
+            with open(PENDING_FILE, "r", encoding="utf-8") as f:
+                product_links = [line.strip() for line in f if line.strip()]
+        else:
+            # Bắt đầu quét sitemap
         # Thử tối đa 3 lần tải lại trang nếu bị kẹt ở Cloudflare
         for attempt in range(3):
             page.goto(SEARCH_URL, wait_until="domcontentloaded")
@@ -119,24 +135,24 @@ def crawl_fptshop_to_excel(chunk=1, total_chunks=1):
             except Exception:
                 pass
                 
-        # Loại bỏ trùng lặp và sắp xếp để đảm bảo thứ tự
-        product_links = sorted(list(set(product_links)))
-        
-        print(f"--> Tìm thấy tổng cộng {len(product_links)} link laptop từ sitemap FPTSHOP.")
-        
-        if len(product_links) == 0:
-            print("Không tìm thấy link, kết thúc.")
-            browser.close()
-            return
+            # Loại bỏ trùng lặp và sắp xếp để đảm bảo thứ tự
+            product_links = sorted(list(set(product_links)))
             
-        # Chia nhỏ danh sách link (Sharding)
-        chunk_size = math.ceil(len(product_links) / total_chunks)
-        start_idx = (chunk - 1) * chunk_size
-        end_idx = start_idx + chunk_size
-        product_links = product_links[start_idx:end_idx]
-        
-        print(f"--> [SHARDING] Mảnh {chunk}/{total_chunks}: Cào {len(product_links)} link (từ {start_idx} đến {end_idx-1})")
+            print(f"--> Tìm thấy tổng cộng {len(product_links)} link laptop từ sitemap FPTSHOP.")
             
+            if len(product_links) == 0:
+                print("Không tìm thấy link, kết thúc.")
+                browser.close()
+                return
+                
+            # Chia nhỏ danh sách link (Sharding)
+            chunk_size = math.ceil(len(product_links) / total_chunks)
+            start_idx = (chunk - 1) * chunk_size
+            end_idx = start_idx + chunk_size
+            product_links = product_links[start_idx:end_idx]
+            
+            print(f"--> [SHARDING] Mảnh {chunk}/{total_chunks}: Cào {len(product_links)} link (từ {start_idx} đến {end_idx-1})")
+                
         import random
         random.shuffle(product_links)
         
@@ -196,6 +212,16 @@ def crawl_fptshop_to_excel(chunk=1, total_chunks=1):
                 # Nếu bị chặn liên tiếp 3 link → Cloudflare đã chặn IP cứng, thoát script để lưu data
                 if consecutive_cf_fails >= 3:
                     print(f"\n    🔴 Bị Cloudflare chặn cứng IP sau {i+1} link! Dừng script sớm để bảo toàn dữ liệu đã cào.")
+                    
+                    # Tính toán index thực sự của link đầu tiên trong chuỗi 3 link bị fail liên tiếp
+                    # i là index hiện tại (link fail thứ 3). Vậy link fail đầu tiên là i - 2
+                    failed_start_idx = max(0, i - 2)
+                    remaining_links = product_links[failed_start_idx:]
+                    with open(PENDING_FILE, "w", encoding="utf-8") as f:
+                        for r_link in remaining_links:
+                            f.write(r_link + "\n")
+                    print(f"    💾 Đã lưu {len(remaining_links)} link dang dở vào {PENDING_FILE}")
+                    
                     break
                 continue
             
@@ -333,6 +359,10 @@ def crawl_fptshop_to_excel(chunk=1, total_chunks=1):
                     print(f"    💾 Đã lưu tạm {len(final_results)} laptop.")
         browser.close()
         
+        if consecutive_cf_fails < 3 and os.path.exists(PENDING_FILE):
+            os.remove(PENDING_FILE)
+            print(f"    ✨ Đã hoàn thành mảnh {chunk}, xóa file pending!")
+            
         # Lưu file
         if final_results:
             df = pd.DataFrame(final_results)

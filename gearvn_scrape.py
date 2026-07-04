@@ -71,6 +71,19 @@ def close_popup(page):
         return ""
 
 def crawl_gearvn_to_excel(chunk=1, total_chunks=1):
+    timestamp = int(time.time())
+    EXCEL_FILE = f"laptop_gearvn_chunk_{chunk}_{timestamp}.xlsx"
+    PENDING_FILE = f"gearvn_pending_chunk_{chunk}.txt"
+    
+    import glob
+    import os
+    # Kiểm tra xem đây có phải là một lần chạy Retry hay không
+    is_retry_run = len(glob.glob("*_pending_chunk_*.txt")) > 0
+    
+    if is_retry_run and not os.path.exists(PENDING_FILE):
+        print(f"Mảnh {chunk} đã hoàn thành từ trước. Bỏ qua để tiết kiệm tài nguyên.")
+        return
+        
     print("=== [LEVEL 0] ĐANG QUÉT DANH MỤC TRÊN GEARVN ===")
     
     with sync_playwright() as p:
@@ -78,11 +91,15 @@ def crawl_gearvn_to_excel(chunk=1, total_chunks=1):
         context = browser.new_context(viewport={"width": 1920, "height": 1080})
         page = context.new_page()
         
-        # Lặp qua từng trang collection để gom link sản phẩm
         product_links = []
         
-        for col_index, collection_url in enumerate(COLLECTION_URLS, start=1):
-            print(f"\n--- [{col_index}/{len(COLLECTION_URLS)}] Đang quét: {collection_url} ---")
+        if os.path.exists(PENDING_FILE):
+            print(f"=== ĐANG CHẠY TIẾP TỤC MẢNH {chunk} (RETRY) ===")
+            with open(PENDING_FILE, "r", encoding="utf-8") as f:
+                product_links = [line.strip() for line in f if line.strip()]
+        else:
+            for col_index, collection_url in enumerate(COLLECTION_URLS, start=1):
+                print(f"\n--- [{col_index}/{len(COLLECTION_URLS)}] Đang quét: {collection_url} ---")
             
             page.goto(collection_url, wait_until="domcontentloaded")
             
@@ -142,21 +159,23 @@ def crawl_gearvn_to_excel(chunk=1, total_chunks=1):
             
             print(f"    --> Tìm thấy {count_new} link mới (tổng: {len(product_links)})")
         
-        print(f"\n=== TỔNG CỘNG: {len(product_links)} link laptop (đã loại trùng) ===")
-        
-        # Sort danh sách để đảm bảo phân rã đều giữa các shard
-        product_links = sorted(list(set(product_links)))
-        
-        # Chia nhỏ danh sách link (Sharding)
-        chunk_size = math.ceil(len(product_links) / total_chunks)
-        start_idx = (chunk - 1) * chunk_size
-        end_idx = start_idx + chunk_size
-        product_links = product_links[start_idx:end_idx]
-        
-        print(f"--> [SHARDING] Mảnh {chunk}/{total_chunks}: Cào {len(product_links)} link (từ {start_idx} đến {end_idx-1})")
+            print(f"\n=== TỔNG CỘNG: {len(product_links)} link laptop (đã loại trùng) ===")
+            
+            # Sort danh sách để đảm bảo phân rã đều giữa các shard
+            product_links = sorted(list(set(product_links)))
+            
+            # Chia nhỏ danh sách link (Sharding)
+            chunk_size = math.ceil(len(product_links) / total_chunks)
+            start_idx = (chunk - 1) * chunk_size
+            end_idx = start_idx + chunk_size
+            product_links = product_links[start_idx:end_idx]
+            
+            print(f"--> [SHARDING] Mảnh {chunk}/{total_chunks}: Cào {len(product_links)} link (từ {start_idx} đến {end_idx-1})")
+            
         print("\n=== [LEVEL 1] TRUY CẬP TỪNG LINK ĐỂ LẤY THÔNG TIN CHI TIẾT ===")
         
         final_results = []
+        consecutive_cf_fails = 0
         
         for index, url in enumerate(product_links, start=1):
             print(f"[{index}/{len(product_links)}] Đang xử lý: {url}")
@@ -314,13 +333,29 @@ def crawl_gearvn_to_excel(chunk=1, total_chunks=1):
                 
             except Exception as e:
                 print(f"    ! Gặp lỗi khi xử lý link {url}: {e}")
+                consecutive_cf_fails += 1
+                
+                if consecutive_cf_fails >= 3:
+                    print(f"\n    🔴 Bị chặn hoặc lỗi IP sau {index} link! Dừng script sớm để bảo toàn dữ liệu đã cào.")
+                    failed_start_idx = max(0, index - 1 - 2)
+                    remaining_links = product_links[failed_start_idx:]
+                    with open(PENDING_FILE, "w", encoding="utf-8") as f:
+                        for r_link in remaining_links:
+                            f.write(r_link + "\n")
+                    print(f"    💾 Đã lưu {len(remaining_links)} link dang dở vào {PENDING_FILE}")
+                    break
+            else:
+                consecutive_cf_fails = 0
         
-        # Đóng trình duyệt
         browser.close()
+        
+        if consecutive_cf_fails < 3 and os.path.exists(PENDING_FILE):
+            os.remove(PENDING_FILE)
+            print(f"    ✨ Đã hoàn thành mảnh {chunk}, xóa file pending!")
             
     # --- XỬ LÝ XUẤT FILE EXCEL ---
     if final_results:
-        output_file = f"laptop_gearvn_chunk_{chunk}.xlsx"
+        output_file = EXCEL_FILE
         df = pd.DataFrame(final_results)
         df.to_excel(output_file, index=False, engine='openpyxl')
         print(f"\n=== HOÀN THÀNH MẢNH {chunk}! Đã lưu {len(final_results)} laptop vào '{output_file}' ===")

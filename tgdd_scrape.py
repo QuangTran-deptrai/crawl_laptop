@@ -40,6 +40,19 @@ def close_popup(page):
         pass
 
 def crawl_tgdd_to_excel(chunk=1, total_chunks=1):
+    timestamp = int(time.time())
+    EXCEL_FILE = f"laptop_tgdd_chunk_{chunk}_{timestamp}.xlsx"
+    PENDING_FILE = f"tgdd_pending_chunk_{chunk}.txt"
+    
+    import glob
+    import os
+    # Kiểm tra xem đây có phải là một lần chạy Retry hay không
+    is_retry_run = len(glob.glob("*_pending_chunk_*.txt")) > 0
+    
+    if is_retry_run and not os.path.exists(PENDING_FILE):
+        print(f"Mảnh {chunk} đã hoàn thành từ trước. Bỏ qua để tiết kiệm tài nguyên.")
+        return
+        
     print("=== [LEVEL 0] ĐANG QUÉT TRANG TÌM KIẾM TGDĐ ===")
     
     with sync_playwright() as p:
@@ -47,15 +60,22 @@ def crawl_tgdd_to_excel(chunk=1, total_chunks=1):
         context = browser.new_context(viewport={"width": 1920, "height": 1080})
         page = context.new_page()
         
-        # TGDĐ thường kiểm tra location, ta set mặc định hoặc cứ bypass
-        page.goto(SEARCH_URL, wait_until="domcontentloaded")
-        time.sleep(3)
-        close_popup(page)
+        product_links = []
         
-        print("    >> Đang tải tất cả sản phẩm (bấm Xem thêm)...")
-        load_more_count = 0
-        while True:
-            page.evaluate("window.scrollTo(0, document.body.scrollHeight);")
+        if os.path.exists(PENDING_FILE):
+            print(f"=== ĐANG CHẠY TIẾP TỤC MẢNH {chunk} (RETRY) ===")
+            with open(PENDING_FILE, "r", encoding="utf-8") as f:
+                product_links = [line.strip() for line in f if line.strip()]
+        else:
+            # TGDĐ thường kiểm tra location, ta set mặc định hoặc cứ bypass
+            page.goto(SEARCH_URL, wait_until="domcontentloaded")
+            time.sleep(3)
+            close_popup(page)
+            
+            print("    >> Đang tải tất cả sản phẩm (bấm Xem thêm)...")
+            load_more_count = 0
+            while True:
+                page.evaluate("window.scrollTo(0, document.body.scrollHeight);")
             time.sleep(2)
             
             try:
@@ -98,21 +118,23 @@ def crawl_tgdd_to_excel(chunk=1, total_chunks=1):
                 if full_link not in product_links:
                     product_links.append(full_link)
                     
-        print(f"--> Tìm thấy tổng cộng {len(product_links)} link laptop từ trang tìm kiếm TGDĐ.")
-        
-        # Sort danh sách để đảm bảo phân rã đều giữa các shard
-        product_links = sorted(list(set(product_links)))
-        
-        # Chia nhỏ danh sách link (Sharding)
-        chunk_size = math.ceil(len(product_links) / total_chunks)
-        start_idx = (chunk - 1) * chunk_size
-        end_idx = start_idx + chunk_size
-        product_links = product_links[start_idx:end_idx]
-        
-        print(f"--> [SHARDING] Mảnh {chunk}/{total_chunks}: Cào {len(product_links)} link (từ {start_idx} đến {end_idx-1})")
+            print(f"--> Tìm thấy tổng cộng {len(product_links)} link laptop từ trang tìm kiếm TGDĐ.")
+            
+            # Sort danh sách để đảm bảo phân rã đều giữa các shard
+            product_links = sorted(list(set(product_links)))
+            
+            # Chia nhỏ danh sách link (Sharding)
+            chunk_size = math.ceil(len(product_links) / total_chunks)
+            start_idx = (chunk - 1) * chunk_size
+            end_idx = start_idx + chunk_size
+            product_links = product_links[start_idx:end_idx]
+            
+            print(f"--> [SHARDING] Mảnh {chunk}/{total_chunks}: Cào {len(product_links)} link (từ {start_idx} đến {end_idx-1})")
+            
         print("\n=== [LEVEL 1] TRUY CẬP TỪNG LINK ĐỂ LẤY THÔNG TIN ===")
         
         final_results = []
+        consecutive_cf_fails = 0
         
         for index, url in enumerate(product_links, start=1):
             print(f"[{index}/{len(product_links)}] Đang xử lý: {url}")
@@ -256,6 +278,18 @@ def crawl_tgdd_to_excel(chunk=1, total_chunks=1):
                 
             except Exception as e:
                 print(f"    ! Gặp lỗi khi xử lý link {url}: {e}")
+                consecutive_cf_fails += 1
+                
+                if consecutive_cf_fails >= 3:
+                    print(f"\n    🔴 Bị chặn hoặc lỗi IP sau {index} link! Dừng script sớm để bảo toàn dữ liệu đã cào.")
+                    failed_start_idx = max(0, index - 1 - 2)
+                    remaining_links = product_links[failed_start_idx:]
+                    with open(PENDING_FILE, "w", encoding="utf-8") as f:
+                        for r_link in remaining_links:
+                            f.write(r_link + "\n")
+                    print(f"    💾 Đã lưu {len(remaining_links)} link dang dở vào {PENDING_FILE}")
+                    break
+                
                 # Phục hồi (Reset) lại tab trình duyệt nếu trang trước đó bị lỗi Timeout hoặc ngắt kết nối
                 try:
                     page.close()
@@ -263,12 +297,19 @@ def crawl_tgdd_to_excel(chunk=1, total_chunks=1):
                     context.on("page", lambda p: p.close() if p != page else None)
                 except Exception:
                     pass
+            else:
+                # Chạy thành công (ko exception)
+                consecutive_cf_fails = 0
         
         browser.close()
+        
+        if consecutive_cf_fails < 3 and os.path.exists(PENDING_FILE):
+            os.remove(PENDING_FILE)
+            print(f"    ✨ Đã hoàn thành mảnh {chunk}, xóa file pending!")
             
     # --- XỬ LÝ XUẤT FILE EXCEL ---
     if final_results:
-        output_file = f"laptop_tgdd_chunk_{chunk}.xlsx"
+        output_file = EXCEL_FILE
         df = pd.DataFrame(final_results)
         df.to_excel(output_file, index=False, engine='openpyxl')
         print(f"\n=== HOÀN THÀNH MẢNH {chunk}! Đã lưu {len(final_results)} laptop vào '{output_file}' ===")

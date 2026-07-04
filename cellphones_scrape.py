@@ -216,8 +216,14 @@ def crawl_cellphones_to_excel(chunk=1, total_chunks=1):
                 specs_string = " | ".join([f"{k}: {v}" for k, v in specs_dict.items()])
                 
                 # 3. Giá hiện tại & Giá gốc (Chỉ quét trong khung giá chính để tránh lấy nhầm giá phụ kiện)
-                current_price = prod_page.css('.box-info__box-price .product__price--show::text, .box-product-price-wrapper .sale-price::text, .box-product-price-wrapper .product__price--show::text').get(default="").strip()
-                original_price = prod_page.css('.box-info__box-price .product__price--through::text, .box-product-price-wrapper .base-price::text, .box-product-price-wrapper .product__price--through::text').get(default="").strip()
+                current_price = ""
+                original_price = ""
+                price_box = prod_page.css('.box-product-price-wrapper, .box-info__box-price, .tpt-box-price')
+                if price_box:
+                    main_box = price_box[0]
+                    current_price = main_box.css('.tpt-price::text, .product__price--show::text, .sale-price::text').get(default="").strip()
+                    original_price = main_box.css('.tpt-price-through::text, .product__price--through::text, .base-price::text').get(default="").strip()
+                    
                 discount_percent = prod_page.css('.box-info__box-price .product__price--percent-detail span::text').get(default="").strip()
                 discount_percent = calculate_discount(current_price, original_price, discount_percent)
                 

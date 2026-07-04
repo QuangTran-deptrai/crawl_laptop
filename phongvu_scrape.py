@@ -148,11 +148,13 @@ def crawl_phongvu_to_excel():
         print("\n=== [LEVEL 1] TRUY CẬP TỪNG LINK ĐỂ TRÍCH XUẤT THÔNG TIN ===")
         
         final_results = []
+        initial_count = 0
         if os.path.exists(EXCEL_FILE):
             try:
                 existing_df = pd.read_excel(EXCEL_FILE)
                 final_results = existing_df.to_dict('records')
-                print(f"Đã nạp {len(final_results)} laptop từ file Excel cũ để ghi nối tiếp.")
+                initial_count = len(final_results)
+                print(f"Đã nạp {initial_count} laptop từ file Excel cũ để ghi nối tiếp.")
             except Exception as e:
                 print(f"Lỗi đọc file Excel cũ: {e}")
                 
@@ -350,7 +352,17 @@ def crawl_phongvu_to_excel():
         if final_results:
             df = pd.DataFrame(final_results)
             df.to_excel(EXCEL_FILE, index=False)
-            print(f"\n=== HOÀN THÀNH! Đã lưu {len(final_results)} laptop vào '{EXCEL_FILE}' ===")
+            
+            new_items_count = len(final_results) - initial_count
+            
+            if consecutive_cf_fails >= 3:
+                print(f"\n=== TẠM DỪNG: Đã lưu bảo toàn {len(final_results)} laptop vào '{EXCEL_FILE}' ===")
+                if new_items_count == 0:
+                    with open("BLOCKED.txt", "w", encoding="utf-8") as f:
+                        f.write("Blocked instantly")
+                    print("⚠️ CẢNH BÁO: IP đã bị chặn cứng hoàn toàn, tạo cờ BLOCKED.txt để ngưng auto-trigger!")
+            else:
+                print(f"\n=== HOÀN THÀNH! Đã lưu {len(final_results)} laptop vào '{EXCEL_FILE}' ===")
         else:
             print("\n=== LỖI: Không có dữ liệu nào được thu thập. ===")
 

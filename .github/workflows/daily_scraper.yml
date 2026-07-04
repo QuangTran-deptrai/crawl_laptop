@@ -113,8 +113,12 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           if ls *_pending.txt 1> /dev/null 2>&1; then
-            echo "Phát hiện file pending. Tự động kích hoạt chạy tiếp luồng mới..."
-            gh workflow run daily_scraper.yml
+            if ls BLOCKED.txt 1> /dev/null 2>&1; then
+              echo "⚠️ CẢNH BÁO: Phát hiện IP Github Actions đã bị chặn cứng hoàn toàn (không cào được thêm link nào). Tạm ngưng auto-trigger để tránh lặp vô tận!"
+            else
+              echo "Phát hiện file pending. Tự động kích hoạt chạy tiếp luồng mới..."
+              gh workflow run daily_scraper.yml
+            fi
           else
             echo "🎉 TẤT CẢ CÁC WEB ĐÃ ĐƯỢC CÀO XONG 100%!"
           fi

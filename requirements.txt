@@ -1,8 +1,0 @@
-pandas
-scrapling[all]
-openpyxl
-patchright
-undetected-chromedriver
-selenium
-httpx
-python-dotenv

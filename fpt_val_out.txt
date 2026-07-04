@@ -1,1 +1,0 @@
-ku=00926106\",\"skuDisplayName\":\"Laptop Lenovo Gaming LOQ Essential 15ARP10E Ryzen 7 170/16GB/1TB/15.6\\\" FHD/RTX3050/W11H (83S000DCVN)\",\"unitCode\":8,\"type\":\"Normal\",\"attributes\":\"$49\",\"inv

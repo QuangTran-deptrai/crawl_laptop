@@ -1,1 +1,0 @@
-count\":2400000,\"finalPrice\":28590000}\na9:{\"id\":828,\"propertyName\":\"ram\",\"displayName\":\"Dung lượng RAM\",\"isCompare\":true,\"icon\":null,\"unit\":null,\"value\":\"16 GB (1 thanh 16 GB)\"}\na8:[\"$a9\"]

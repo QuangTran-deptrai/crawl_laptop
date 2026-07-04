@@ -40,17 +40,17 @@ def close_popup(page):
         pass
 
 def crawl_tgdd_to_excel(chunk=1, total_chunks=1):
+    import time
+    import glob
+    import os
+    
     timestamp = int(time.time())
     EXCEL_FILE = f"laptop_tgdd_chunk_{chunk}_{timestamp}.xlsx"
     PENDING_FILE = f"tgdd_pending_chunk_{chunk}.txt"
     
-    import glob
-    import os
-    # Kiểm tra xem đây có phải là một lần chạy Retry hay không
     is_retry_run = len(glob.glob("*_pending_chunk_*.txt")) > 0
-    
     if is_retry_run and not os.path.exists(PENDING_FILE):
-        print(f"Mảnh {chunk} đã hoàn thành từ trước. Bỏ qua để tiết kiệm tài nguyên.")
+        print(f"Mảnh {chunk} đã hoàn thành từ trước. Bỏ qua.")
         return
         
     print("=== [LEVEL 0] ĐANG QUÉT TRANG TÌM KIẾM TGDĐ ===")
@@ -76,48 +76,47 @@ def crawl_tgdd_to_excel(chunk=1, total_chunks=1):
             load_more_count = 0
             while True:
                 page.evaluate("window.scrollTo(0, document.body.scrollHeight);")
+                time.sleep(2)
+                
+                try:
+                    clicked = page.evaluate('''() => {
+                        let btns = document.querySelectorAll('.view-more a, .see-more-btn');
+                        for (let btn of btns) {
+                            let text = (btn.innerText || "").toLowerCase();
+                            // Phải đảm bảo nút thực sự hiển thị (không bị display: none) và chứa chữ "laptop"
+                            if (btn.offsetWidth > 0 && btn.offsetHeight > 0 && text.includes("xem thêm") && text.includes("laptop")) {
+                                btn.click();
+                                return true;
+                            }
+                        }
+                        return false;
+                    }''')
+                    
+                    if clicked:
+                        load_more_count += 1
+                        print(f"    >> Đã bấm 'Xem thêm' lần {load_more_count}")
+                        time.sleep(3)
+                        continue
+                except Exception:
+                    pass
+                    
+                break # Thoát nếu không tìm thấy nút hoặc không bấm được nữa
+                
             time.sleep(2)
             
-            try:
-                clicked = page.evaluate('''() => {
-                    let btns = document.querySelectorAll('.view-more a, .see-more-btn');
-                    for (let btn of btns) {
-                        let text = (btn.innerText || "").toLowerCase();
-                        // Phải đảm bảo nút thực sự hiển thị (không bị display: none) và chứa chữ "laptop"
-                        if (btn.offsetWidth > 0 && btn.offsetHeight > 0 && text.includes("xem thêm") && text.includes("laptop")) {
-                            btn.click();
-                            return true;
-                        }
-                    }
-                    return false;
-                }''')
-                
-                if clicked:
-                    load_more_count += 1
-                    print(f"    >> Đã bấm 'Xem thêm' lần {load_more_count}")
-                    time.sleep(3)
-                    continue
-            except Exception:
-                pass
-                
-            break # Thoát nếu không tìm thấy nút hoặc không bấm được nữa
+            html_content = page.content()
+            search_page = Adaptor(html_content, url=SEARCH_URL)
             
-        time.sleep(2)
-        
-        html_content = page.content()
-        search_page = Adaptor(html_content, url=SEARCH_URL)
-        
-        # Link sản phẩm nằm trong .item a.main-contain
-        product_blocks = search_page.css('li.item a.main-contain')
-        product_links = []
-        
-        for a_tag in product_blocks:
-            relative_link = a_tag.css('::attr(href)').get(default="")
-            if relative_link:
-                full_link = BASE_URL + relative_link if relative_link.startswith('/') else relative_link
-                if full_link not in product_links:
-                    product_links.append(full_link)
-                    
+            # Link sản phẩm nằm trong .item a.main-contain
+            product_blocks = search_page.css('li.item a.main-contain')
+            
+            for a_tag in product_blocks:
+                relative_link = a_tag.css('::attr(href)').get(default="")
+                if relative_link:
+                    full_link = BASE_URL + relative_link if relative_link.startswith('/') else relative_link
+                    if full_link not in product_links:
+                        product_links.append(full_link)
+                        
             print(f"--> Tìm thấy tổng cộng {len(product_links)} link laptop từ trang tìm kiếm TGDĐ.")
             
             # Sort danh sách để đảm bảo phân rã đều giữa các shard
@@ -282,14 +281,16 @@ def crawl_tgdd_to_excel(chunk=1, total_chunks=1):
                 
                 if consecutive_cf_fails >= 3:
                     print(f"\n    🔴 Bị chặn hoặc lỗi IP sau {index} link! Dừng script sớm để bảo toàn dữ liệu đã cào.")
+                    
                     failed_start_idx = max(0, index - 1 - 2)
                     remaining_links = product_links[failed_start_idx:]
                     with open(PENDING_FILE, "w", encoding="utf-8") as f:
                         for r_link in remaining_links:
                             f.write(r_link + "\n")
                     print(f"    💾 Đã lưu {len(remaining_links)} link dang dở vào {PENDING_FILE}")
+                    
                     break
-                
+                    
                 # Phục hồi (Reset) lại tab trình duyệt nếu trang trước đó bị lỗi Timeout hoặc ngắt kết nối
                 try:
                     page.close()
@@ -298,7 +299,6 @@ def crawl_tgdd_to_excel(chunk=1, total_chunks=1):
                 except Exception:
                     pass
             else:
-                # Chạy thành công (ko exception)
                 consecutive_cf_fails = 0
         
         browser.close()

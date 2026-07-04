@@ -56,17 +56,17 @@ def close_popup(page):
         pass
 
 def crawl_cellphones_to_excel(chunk=1, total_chunks=1):
+    import time
+    import glob
+    import os
+    
     timestamp = int(time.time())
     EXCEL_FILE = f"laptop_cellphones_chunk_{chunk}_{timestamp}.xlsx"
     PENDING_FILE = f"cellphones_pending_chunk_{chunk}.txt"
     
-    import glob
-    import os
-    # Kiểm tra xem đây có phải là một lần chạy Retry hay không
     is_retry_run = len(glob.glob("*_pending_chunk_*.txt")) > 0
-    
     if is_retry_run and not os.path.exists(PENDING_FILE):
-        print(f"Mảnh {chunk} đã hoàn thành từ trước. Bỏ qua để tiết kiệm tài nguyên.")
+        print(f"Mảnh {chunk} đã hoàn thành từ trước. Bỏ qua.")
         return
         
     print("=== [LEVEL 0] ĐANG QUÉT TRANG TÌM KIẾM CELLPHONES ===")
@@ -91,57 +91,56 @@ def crawl_cellphones_to_excel(chunk=1, total_chunks=1):
             page.goto(SEARCH_URL, wait_until="domcontentloaded")
             time.sleep(3)
             close_popup(page)
-        
-        print("    >> Đang tải tất cả sản phẩm (bấm Xem thêm)...")
-        load_more_count = 0
-        while True:
-            # Cuộn xuống từ từ để hiển thị nút
-            page.evaluate("window.scrollBy(0, 1000);")
-            time.sleep(1)
-            page.evaluate("window.scrollBy(0, 1000);")
+            
+            print("    >> Đang tải tất cả sản phẩm (bấm Xem thêm)...")
+            load_more_count = 0
+            while True:
+                # Cuộn xuống từ từ để hiển thị nút
+                page.evaluate("window.scrollBy(0, 1000);")
+                time.sleep(1)
+                page.evaluate("window.scrollBy(0, 1000);")
+                time.sleep(2)
+                
+                close_popup(page)
+                
+                # Dùng Javascript để click chính xác nút Xem thêm sản phẩm (bỏ qua mọi lỗi che khuất của giao diện)
+                clicked = page.evaluate('''() => {
+                    let btns = document.querySelectorAll('.cps-block-content_btn-showmore a, .button__show-more-product');
+                    for (let btn of btns) {
+                        let text = btn.innerText.toLowerCase();
+                        // Đảm bảo chỉ click nút chứa chữ "xem thêm" và "sản phẩm", tránh nút bình luận
+                        if (text.includes("xem thêm") && text.includes("sản phẩm")) {
+                            btn.scrollIntoView({block: "center"});
+                            btn.click();
+                            return true;
+                        }
+                    }
+                    return false;
+                }''')
+                    
+                if clicked:
+                    load_more_count += 1
+                    print(f"    >> Đã bấm 'Xem thêm' lần {load_more_count}")
+                    time.sleep(4)
+                    continue
+                else:
+                    break
+                
             time.sleep(2)
             
-            close_popup(page)
+            html_content = page.content()
+            search_page = Adaptor(html_content, url=SEARCH_URL)
             
-            # Dùng Javascript để click chính xác nút Xem thêm sản phẩm (bỏ qua mọi lỗi che khuất của giao diện)
-            clicked = page.evaluate('''() => {
-                let btns = document.querySelectorAll('.cps-block-content_btn-showmore a, .button__show-more-product');
-                for (let btn of btns) {
-                    let text = btn.innerText.toLowerCase();
-                    // Đảm bảo chỉ click nút chứa chữ "xem thêm" và "sản phẩm", tránh nút bình luận
-                    if (text.includes("xem thêm") && text.includes("sản phẩm")) {
-                        btn.scrollIntoView({block: "center"});
-                        btn.click();
-                        return true;
-                    }
-                }
-                return false;
-            }''')
-                
-            if clicked:
-                load_more_count += 1
-                print(f"    >> Đã bấm 'Xem thêm' lần {load_more_count}")
-                time.sleep(4)
-                continue
-            else:
-                break
+            # Chỉ lấy sản phẩm chính trong .filter-sort__list-product
+            product_blocks = search_page.css('.filter-sort__list-product .product-info-container a.product__link')
             
-        time.sleep(2)
-        
-        html_content = page.content()
-        search_page = Adaptor(html_content, url=SEARCH_URL)
-        
-        # Chỉ lấy sản phẩm chính trong .filter-sort__list-product
-        product_blocks = search_page.css('.filter-sort__list-product .product-info-container a.product__link')
-        product_links = []
-        
-        for a_tag in product_blocks:
-            relative_link = a_tag.css('::attr(href)').get(default="")
-            if relative_link:
-                full_link = BASE_URL + relative_link if relative_link.startswith('/') else relative_link
-                if full_link not in product_links:
-                    product_links.append(full_link)
-                    
+            for a_tag in product_blocks:
+                relative_link = a_tag.css('::attr(href)').get(default="")
+                if relative_link:
+                    full_link = BASE_URL + relative_link if relative_link.startswith('/') else relative_link
+                    if full_link not in product_links:
+                        product_links.append(full_link)
+                        
             print(f"--> Tìm thấy tổng cộng {len(product_links)} link laptop từ trang tìm kiếm CellphoneS.")
             
             # Sort danh sách để đảm bảo phân rã đều giữa các shard
@@ -277,15 +276,16 @@ def crawl_cellphones_to_excel(chunk=1, total_chunks=1):
                 
                 if consecutive_cf_fails >= 3:
                     print(f"\n    🔴 Bị chặn hoặc lỗi IP sau {index} link! Dừng script sớm để bảo toàn dữ liệu đã cào.")
+                    
                     failed_start_idx = max(0, index - 1 - 2)
                     remaining_links = product_links[failed_start_idx:]
                     with open(PENDING_FILE, "w", encoding="utf-8") as f:
                         for r_link in remaining_links:
                             f.write(r_link + "\n")
                     print(f"    💾 Đã lưu {len(remaining_links)} link dang dở vào {PENDING_FILE}")
+                    
                     break
             else:
-                # Chạy thành công (ko exception)
                 consecutive_cf_fails = 0
         
         browser.close()

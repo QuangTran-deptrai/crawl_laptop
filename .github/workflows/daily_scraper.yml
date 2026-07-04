@@ -103,28 +103,43 @@ jobs:
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
           
+          count=$(cat retry_count.txt 2>/dev/null || echo "0")
+          
           if ls *_pending*.txt 1> /dev/null 2>&1; then
-            echo "Phát hiện còn file pending. Lưu Excel tạm và kích hoạt Retry..."
-            git add -A *.xlsx || true
-            git add -A *_pending*.txt || true
-            git diff --quiet && git diff --staged --quiet || (git commit -m "Auto-update: Lưu trạng thái dang dở (Matrix Sharding) [skip ci]" && git push)
-            
-            # Kích hoạt lại chính workflow này
-            gh workflow run daily_scraper.yml
-          else
-            echo "🎉 TẤT CẢ CÁC WEB ĐÃ ĐƯỢC CÀO XONG 100%!"
-            echo "Tiến hành gộp mảnh và đẩy lên Google Sheets..."
-            
-            # Xóa sạch pending trên Git (nếu có)
-            git rm *_pending*.txt --ignore-unmatch || true
-            
-            # Gộp
-            python chunk_merger.py
-            
-            # Đẩy lên GG Sheets
-            python sync_excel_to_sheets.py
-            
-            # Commit file all
-            git add -A *.xlsx || true
-            git diff --quiet && git diff --staged --quiet || (git commit -m "Auto-update: Hoàn thành cào dữ liệu [skip ci]" && git push)
+            if [ "$count" -ge 3 ]; then
+              echo "⚠️ CẢNH BÁO: Đã Retry 3 lần nhưng vẫn còn file pending (có thể do bị chặn IP cứng). Dừng Retry để tránh lặp vô tận!"
+              echo "0" > retry_count.txt
+              # Tiếp tục chạy xuống khối gộp data bên dưới
+            else
+              count=$((count + 1))
+              echo "$count" > retry_count.txt
+              echo "Phát hiện còn file pending. Lưu Excel tạm và kích hoạt Retry lần $count..."
+              
+              git add -A *.xlsx || true
+              git add -A *_pending*.txt || true
+              git add retry_count.txt || true
+              git diff --quiet && git diff --staged --quiet || (git commit -m "Auto-update: Lưu trạng thái dang dở (Retry lần $count) [skip ci]" && git push)
+              
+              # Kích hoạt lại chính workflow này
+              gh workflow run daily_scraper.yml
+              exit 0 # Dừng nhánh này tại đây
+            fi
           fi
+          
+          echo "🎉 HOÀN THÀNH CÀO DỮ LIỆU!"
+          echo "Tiến hành gộp mảnh và đẩy lên Google Sheets..."
+          echo "0" > retry_count.txt
+            
+          # Xóa sạch pending trên Git (nếu có)
+          git rm *_pending*.txt --ignore-unmatch || true
+          
+          # Gộp
+          python chunk_merger.py
+          
+          # Đẩy lên GG Sheets
+          python sync_excel_to_sheets.py
+          
+          # Commit file all
+          git add -A *.xlsx || true
+          git add retry_count.txt || true
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Auto-update: Hoàn thành cào dữ liệu [skip ci]" && git push)

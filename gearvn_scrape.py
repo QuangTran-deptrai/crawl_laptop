@@ -1,6 +1,8 @@
 import pandas as pd
 from datetime import datetime
 import time
+import argparse
+import math
 from patchright.sync_api import sync_playwright
 from scrapling.parser import Adaptor
 
@@ -66,10 +68,10 @@ def close_popup(page):
                 return
         except Exception:
             pass
-        time.sleep(2)
+        return ""
 
-def crawl_laptop_gearvn_to_excel():
-    print("=== [LEVEL 0] ĐANG QUÉT CÁC TRANG COLLECTION GEARVN ===")
+def crawl_gearvn_to_excel(chunk=1, total_chunks=1):
+    print("=== [LEVEL 0] ĐANG QUÉT DANH MỤC TRÊN GEARVN ===")
     
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=False)
@@ -141,6 +143,17 @@ def crawl_laptop_gearvn_to_excel():
             print(f"    --> Tìm thấy {count_new} link mới (tổng: {len(product_links)})")
         
         print(f"\n=== TỔNG CỘNG: {len(product_links)} link laptop (đã loại trùng) ===")
+        
+        # Sort danh sách để đảm bảo phân rã đều giữa các shard
+        product_links = sorted(list(set(product_links)))
+        
+        # Chia nhỏ danh sách link (Sharding)
+        chunk_size = math.ceil(len(product_links) / total_chunks)
+        start_idx = (chunk - 1) * chunk_size
+        end_idx = start_idx + chunk_size
+        product_links = product_links[start_idx:end_idx]
+        
+        print(f"--> [SHARDING] Mảnh {chunk}/{total_chunks}: Cào {len(product_links)} link (từ {start_idx} đến {end_idx-1})")
         print("\n=== [LEVEL 1] TRUY CẬP TỪNG LINK ĐỂ LẤY THÔNG TIN CHI TIẾT ===")
         
         final_results = []
@@ -307,13 +320,17 @@ def crawl_laptop_gearvn_to_excel():
             
     # --- XỬ LÝ XUẤT FILE EXCEL ---
     if final_results:
-        output_file = "laptop_gearvn_all.xlsx"
-        
+        output_file = f"laptop_gearvn_chunk_{chunk}.xlsx"
         df = pd.DataFrame(final_results)
         df.to_excel(output_file, index=False, engine='openpyxl')
-        print(f"\n=== HOÀN THÀNH! Đã lưu {len(final_results)} laptop vào '{output_file}' ===")
+        print(f"\n=== HOÀN THÀNH MẢNH {chunk}! Đã lưu {len(final_results)} laptop vào '{output_file}' ===")
     else:
         print("\nKhông thu thập được dữ liệu nào hợp lệ để xuất file.")
 
 if __name__ == "__main__":
-    crawl_laptop_gearvn_to_excel()
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--chunk', type=int, default=1, help='Phần hiện tại (bắt đầu từ 1)')
+    parser.add_argument('--total-chunks', type=int, default=1, help='Tổng số phần chia')
+    args = parser.parse_args()
+    
+    crawl_gearvn_to_excel(chunk=args.chunk, total_chunks=args.total_chunks)

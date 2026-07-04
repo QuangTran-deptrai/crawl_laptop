@@ -53,7 +53,17 @@ def close_popup(page):
     except Exception:
         pass
 
-def crawl_cellphones_to_excel():
+import time
+from datetime import datetime
+import pandas as pd
+import argparse
+import math
+from parsel import Selector as Adaptor
+
+# Playwright & Patchright
+from playwright.sync_api import sync_playwright
+
+def crawl_cellphones_to_excel(chunk=1, total_chunks=1):
     print("=== [LEVEL 0] ĐANG QUÉT TRANG TÌM KIẾM CELLPHONES ===")
     
     with sync_playwright() as p:
@@ -120,15 +130,20 @@ def crawl_cellphones_to_excel():
                 if full_link not in product_links:
                     product_links.append(full_link)
                     
-        print(f"--> Tìm thấy {len(product_links)} link laptop từ trang tìm kiếm CellphoneS.")
+        print(f"--> Tìm thấy tổng cộng {len(product_links)} link laptop từ trang tìm kiếm CellphoneS.")
+        
+        # Sort danh sách để đảm bảo phân rã đều giữa các shard
+        product_links = sorted(list(set(product_links)))
+        
+        # Chia nhỏ danh sách link (Sharding)
+        chunk_size = math.ceil(len(product_links) / total_chunks)
+        start_idx = (chunk - 1) * chunk_size
+        end_idx = start_idx + chunk_size
+        product_links = product_links[start_idx:end_idx]
+        
+        print(f"--> [SHARDING] Mảnh {chunk}/{total_chunks}: Cào {len(product_links)} link (từ {start_idx} đến {end_idx-1})")
         print("\n=== [LEVEL 1] TRUY CẬP TỪNG LINK ĐỂ LẤY THÔNG TIN ===")
         
-        TEST_MODE = False
-        MAX_TEST_ITEMS = 5
-        if TEST_MODE and len(product_links) > MAX_TEST_ITEMS:
-            product_links = product_links[:MAX_TEST_ITEMS]
-            print(f"*** CHẾ ĐỘ TEST: Chỉ chạy {MAX_TEST_ITEMS} sản phẩm đầu tiên ***")
-            
         final_results = []
         
         for index, url in enumerate(product_links, start=1):
@@ -246,14 +261,19 @@ def crawl_cellphones_to_excel():
                 print(f"    ! Gặp lỗi khi xử lý link {url}: {e}")
         
         browser.close()
-            
+    # --- XỬ LÝ XUẤT FILE EXCEL ---
     if final_results:
-        output_file = "laptop_cellphones_all.xlsx"
+        output_file = f"laptop_cellphones_chunk_{chunk}.xlsx"
         df = pd.DataFrame(final_results)
         df.to_excel(output_file, index=False, engine='openpyxl')
-        print(f"\n=== HOÀN THÀNH! Đã lưu {len(final_results)} laptop vào '{output_file}' ===")
+        print(f"\n=== HOÀN THÀNH MẢNH {chunk}! Đã lưu {len(final_results)} laptop vào '{output_file}' ===")
     else:
         print("\nKhông thu thập được dữ liệu nào hợp lệ để xuất file.")
 
 if __name__ == "__main__":
-    crawl_cellphones_to_excel()
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--chunk', type=int, default=1, help='Phần hiện tại (bắt đầu từ 1)')
+    parser.add_argument('--total-chunks', type=int, default=1, help='Tổng số phần chia')
+    args = parser.parse_args()
+    
+    crawl_cellphones_to_excel(chunk=args.chunk, total_chunks=args.total_chunks)

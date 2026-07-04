@@ -35,10 +35,11 @@ def close_popup(page):
         pass
 
 import os
+import math
+import argparse
 
-def crawl_phongvu_to_excel():
-    PENDING_FILE = "phongvu_pending.txt"
-    EXCEL_FILE = "laptop_phongvu_all.xlsx"
+def crawl_phongvu_to_excel(chunk=1, total_chunks=1):
+    EXCEL_FILE = f"laptop_phongvu_chunk_{chunk}.xlsx"
     
     print("Khởi tạo Patchright cho Phong Vũ...")
     
@@ -53,15 +54,8 @@ def crawl_phongvu_to_excel():
         print("=== [LEVEL 0] ĐANG QUÉT TRANG TÌM KIẾM PHONG VŨ ===")
         
         product_links = []
-        if os.path.exists(PENDING_FILE):
-            with open(PENDING_FILE, "r", encoding="utf-8") as f:
-                product_links = [line.strip() for line in f if line.strip()]
-                
-        if product_links:
-            print(f"\n=== TÌM THẤY {len(product_links)} LINK CÒN DANG DỞ TỪ LẦN CHẠY TRƯỚC ===")
-            print("Bỏ qua quét trang chủ, cào tiếp luôn!")
-        else:
-            # Thử tối đa 3 lần tải lại trang nếu bị kẹt ở Cloudflare
+        
+        # Thử tối đa 3 lần tải lại trang nếu bị kẹt ở Cloudflare
             for attempt in range(3):
                 page.goto(SEARCH_URL, wait_until="domcontentloaded")
                 print(f"Đang kiểm tra Cloudflare (lần thử {attempt + 1})...")
@@ -134,30 +128,28 @@ def crawl_phongvu_to_excel():
             }
             """
             product_links = page.evaluate(js_fetch_all)
-            product_links = list(set(product_links))
+            product_links = sorted(list(set(product_links)))
             
-            print(f"--> Tìm thấy {len(product_links)} link laptop từ trang tìm kiếm Phong Vũ.")
+            print(f"--> Tìm thấy tổng cộng {len(product_links)} link laptop từ trang tìm kiếm Phong Vũ.")
             if len(product_links) == 0:
                 print("Không tìm thấy link, kết thúc.")
                 browser.close()
                 return
+                
+            # Chia nhỏ danh sách link (Sharding)
+            chunk_size = math.ceil(len(product_links) / total_chunks)
+            start_idx = (chunk - 1) * chunk_size
+            end_idx = start_idx + chunk_size
+            product_links = product_links[start_idx:end_idx]
             
+            print(f"--> [SHARDING] Mảnh {chunk}/{total_chunks}: Cào {len(product_links)} link (từ {start_idx} đến {end_idx-1})")
+                
         import random
         random.shuffle(product_links)
         
         print("\n=== [LEVEL 1] TRUY CẬP TỪNG LINK ĐỂ TRÍCH XUẤT THÔNG TIN ===")
         
         final_results = []
-        initial_count = 0
-        if os.path.exists(EXCEL_FILE):
-            try:
-                existing_df = pd.read_excel(EXCEL_FILE)
-                final_results = existing_df.to_dict('records')
-                initial_count = len(final_results)
-                print(f"Đã nạp {initial_count} laptop từ file Excel cũ để ghi nối tiếp.")
-            except Exception as e:
-                print(f"Lỗi đọc file Excel cũ: {e}")
-                
         consecutive_cf_fails = 0  # Đếm số lần bị Cloudflare chặn liên tiếp
             
         for i, link in enumerate(product_links, 1):
@@ -210,13 +202,7 @@ def crawl_phongvu_to_excel():
                 
                 # Nếu bị chặn liên tiếp 3 link → Cloudflare đã chặn IP cứng, thoát script để lưu data
                 if consecutive_cf_fails >= 3:
-                    print(f"\n    🔴 Bị Cloudflare chặn cứng IP sau {i} link! Dừng script sớm để bảo toàn dữ liệu đã cào.")
-                    # Lưu các link chưa cào
-                    remaining_links = product_links[i - consecutive_cf_fails:]
-                    with open(PENDING_FILE, "w", encoding="utf-8") as f:
-                        for r_link in remaining_links:
-                            f.write(r_link + "\n")
-                    print(f"    💾 Đã lưu {len(remaining_links)} link dang dở vào {PENDING_FILE}")
+                    print(f"\n    🔴 Bị Cloudflare chặn cứng IP sau {i+1} link! Dừng script sớm để bảo toàn dữ liệu đã cào.")
                     break
                 continue
             
@@ -344,27 +330,18 @@ def crawl_phongvu_to_excel():
         
         browser.close()
         
-        # Nếu hoàn thành 100% link mà không văng ngang
-        if consecutive_cf_fails < 3 and os.path.exists(PENDING_FILE):
-            os.remove(PENDING_FILE)
-            print("    ✨ Đã hoàn thành 100% danh sách, xóa file pending!")
-        
+        # Lưu file
         if final_results:
             df = pd.DataFrame(final_results)
             df.to_excel(EXCEL_FILE, index=False)
-            
-            new_items_count = len(final_results) - initial_count
-            
-            if consecutive_cf_fails >= 3:
-                print(f"\n=== TẠM DỪNG: Đã lưu bảo toàn {len(final_results)} laptop vào '{EXCEL_FILE}' ===")
-                if new_items_count == 0:
-                    with open("BLOCKED.txt", "w", encoding="utf-8") as f:
-                        f.write("Blocked instantly")
-                    print("⚠️ CẢNH BÁO: IP đã bị chặn cứng hoàn toàn, tạo cờ BLOCKED.txt để ngưng auto-trigger!")
-            else:
-                print(f"\n=== HOÀN THÀNH! Đã lưu {len(final_results)} laptop vào '{EXCEL_FILE}' ===")
+            print(f"\n=== HOÀN THÀNH MẢNH {chunk}! Đã lưu {len(final_results)} laptop vào '{EXCEL_FILE}' ===")
         else:
             print("\n=== LỖI: Không có dữ liệu nào được thu thập. ===")
 
 if __name__ == "__main__":
-    crawl_phongvu_to_excel()
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--chunk', type=int, default=1, help='Phần hiện tại (bắt đầu từ 1)')
+    parser.add_argument('--total-chunks', type=int, default=1, help='Tổng số phần chia')
+    args = parser.parse_args()
+    
+    crawl_phongvu_to_excel(chunk=args.chunk, total_chunks=args.total_chunks)

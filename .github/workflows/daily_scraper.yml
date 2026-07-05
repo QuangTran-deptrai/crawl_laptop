@@ -27,7 +27,8 @@ jobs:
       - name: Lấy mã nguồn
         uses: actions/checkout@v4
 
-      - name: Cài đặt Python 3.11
+      - name: Cài đặt Python 3.11 (Chỉ Ubuntu)
+        if: matrix.script_info.os == 'ubuntu-latest'
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'

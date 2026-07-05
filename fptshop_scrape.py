@@ -146,9 +146,10 @@ def crawl_fptshop_to_excel(chunk=1, total_chunks=1):
             print(f"--> Tìm thấy tổng cộng {len(product_links)} link laptop từ sitemap FPTSHOP.")
             
             if len(product_links) == 0:
-                print("Không tìm thấy link, kết thúc.")
+                print("❌ Lỗi: Không tìm thấy link nào từ sitemap (có thể do bị Cloudflare chặn cứng). Dừng script.")
                 browser.close()
-                return
+                import sys
+                sys.exit(1)
                 
             # Chia nhỏ danh sách link (Sharding)
             chunk_size = math.ceil(len(product_links) / total_chunks)

@@ -153,9 +153,10 @@ def crawl_phongvu_to_excel(chunk=1, total_chunks=1):
             
             print(f"--> Tìm thấy tổng cộng {len(product_links)} link laptop từ trang tìm kiếm Phong Vũ.")
             if len(product_links) == 0:
-                print("Không tìm thấy link, kết thúc.")
+                print("❌ Lỗi: Không tìm thấy link nào từ trang chủ (có thể do bị Cloudflare chặn cứng). Dừng script.")
                 browser.close()
-                return
+                import sys
+                sys.exit(1)
                 
             # Chia nhỏ danh sách link (Sharding)
             chunk_size = math.ceil(len(product_links) / total_chunks)

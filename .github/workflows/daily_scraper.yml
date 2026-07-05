@@ -21,7 +21,7 @@ jobs:
           - cellphones_scrape.py
           - phongvu_scrape.py
           - gearvn_scrape.py
-        chunk: [1, 2, 3, 4]
+        chunk: [1, 2, 3, 4, 5]
 
     steps:
       - name: Lấy mã nguồn
@@ -48,7 +48,7 @@ jobs:
 
       - name: Chạy script cào dữ liệu
         continue-on-error: true # Cho phép lỗi (ví dụ không tìm thấy element) để không sập workflow
-        run: xvfb-run python ${{ matrix.script }} --chunk ${{ matrix.chunk }} --total-chunks 4
+        run: xvfb-run python ${{ matrix.script }} --chunk ${{ matrix.chunk }} --total-chunks 5
 
       - name: Tải file Excel và trạng thái lên bộ nhớ tạm
         uses: actions/upload-artifact@v4

@@ -10,17 +10,17 @@ env:
 
 jobs:
   scrape:
-    name: Cào dữ liệu ${{ matrix.script }}
-    runs-on: ubuntu-latest
+    name: Cào dữ liệu ${{ matrix.script_info.name }}
+    runs-on: ${{ matrix.script_info.os }}
     strategy:
       fail-fast: false # Đừng huỷ các tiến trình khác nếu có 1 web bị lỗi
       matrix:
-        script: 
-          - fptshop_scrape.py
-          - tgdd_scrape.py
-          - cellphones_scrape.py
-          - phongvu_scrape.py
-          - gearvn_scrape.py
+        script_info: 
+          - { name: fptshop_scrape.py, os: self-hosted }
+          - { name: phongvu_scrape.py, os: self-hosted }
+          - { name: tgdd_scrape.py, os: ubuntu-latest }
+          - { name: cellphones_scrape.py, os: ubuntu-latest }
+          - { name: gearvn_scrape.py, os: ubuntu-latest }
         chunk: [1, 2, 3, 4, 5]
 
     steps:
@@ -43,17 +43,24 @@ jobs:
           playwright install chromium
           patchright install chromium
 
-      - name: Cài đặt màn hình ảo (Xvfb)
+      - name: Cài đặt màn hình ảo (Xvfb) (Chỉ Ubuntu)
+        if: matrix.script_info.os == 'ubuntu-latest'
         run: sudo apt-get update && sudo apt-get install -y xvfb
 
-      - name: Chạy script cào dữ liệu
+      - name: Chạy script cào dữ liệu (Ubuntu)
+        if: matrix.script_info.os == 'ubuntu-latest'
         continue-on-error: true # Cho phép lỗi (ví dụ không tìm thấy element) để không sập workflow
-        run: xvfb-run python ${{ matrix.script }} --chunk ${{ matrix.chunk }} --total-chunks 5
+        run: xvfb-run python ${{ matrix.script_info.name }} --chunk ${{ matrix.chunk }} --total-chunks 5
+
+      - name: Chạy script cào dữ liệu (Windows Self-hosted)
+        if: matrix.script_info.os == 'self-hosted'
+        continue-on-error: true
+        run: python ${{ matrix.script_info.name }} --chunk ${{ matrix.chunk }} --total-chunks 5
 
       - name: Tải file Excel và trạng thái lên bộ nhớ tạm
         uses: actions/upload-artifact@v4
         with:
-          name: excel-data-${{ matrix.script }}-chunk-${{ matrix.chunk }}
+          name: excel-data-${{ matrix.script_info.name }}-chunk-${{ matrix.chunk }}
           path: |
             *.xlsx
             *_pending*.txt

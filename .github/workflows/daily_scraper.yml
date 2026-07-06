@@ -2,7 +2,7 @@ name: Daily Laptop Data Scraper (Parallel)
 
 on:
   schedule:
-    - cron: '0 0 * * *' # 7h sáng VN
+    - cron: '15 0 * * *' # 7h15 sáng VN (Tránh kẹt xe giờ cao điểm của Github)
   workflow_dispatch:
 
 env:

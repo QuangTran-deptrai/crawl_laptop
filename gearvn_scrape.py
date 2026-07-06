@@ -75,7 +75,7 @@ def close_popup(page):
             pass
         return ""
 
-def crawl_gearvn_to_excel(chunk=1, total_chunks=1):
+def crawl_gearvn_to_excel(chunk=1, total_chunks=1, get_links_only=False):
     import time
     import glob
     import os
@@ -97,10 +97,15 @@ def crawl_gearvn_to_excel(chunk=1, total_chunks=1):
         page = context.new_page()
         
         product_links = []
+        LINKS_FILE = "gearvn_links.txt"
         
         if os.path.exists(PENDING_FILE):
             print(f"=== ĐANG CHẠY TIẾP TỤC MẢNH {chunk} (RETRY) ===")
             with open(PENDING_FILE, "r", encoding="utf-8") as f:
+                product_links = [line.strip() for line in f if line.strip()]
+        elif not get_links_only and os.path.exists(LINKS_FILE):
+            print(f"=== TÌM THẤY FILE {LINKS_FILE}, BỎ QUA LEVEL 0 ===")
+            with open(LINKS_FILE, "r", encoding="utf-8") as f:
                 product_links = [line.strip() for line in f if line.strip()]
         else:
             for col_index, collection_url in enumerate(COLLECTION_URLS, start=1):
@@ -166,8 +171,16 @@ def crawl_gearvn_to_excel(chunk=1, total_chunks=1):
             
             print(f"\n=== TỔNG CỘNG: {len(product_links)} link laptop (đã loại trùng) ===")
             
-            # Sort danh sách để đảm bảo phân rã đều giữa các shard
+            # Loại bỏ trùng lặp
             product_links = sorted(list(set(product_links)))
+            
+            if get_links_only:
+                with open(LINKS_FILE, "w", encoding="utf-8") as f:
+                    for link in product_links:
+                        f.write(link + "\n")
+                print(f"--> Đã lưu {len(product_links)} link ra file {LINKS_FILE}")
+                browser.close()
+                return
             
             # Chia nhỏ danh sách link (Sharding)
             chunk_size = math.ceil(len(product_links) / total_chunks)
@@ -371,8 +384,9 @@ def crawl_gearvn_to_excel(chunk=1, total_chunks=1):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--chunk', type=int, default=1, help='Phần hiện tại (bắt đầu từ 1)')
-    parser.add_argument('--total-chunks', type=int, default=1, help='Tổng số phần chia')
+    parser.add_argument('--chunk', type=int, default=1, help='Số thứ tự của mảnh hiện tại (1-based)')
+    parser.add_argument('--total-chunks', type=int, default=1, help='Tổng số mảnh cần chia')
+    parser.add_argument('--get-links-only', action='store_true', help='Chỉ quét link và lưu ra file')
     args = parser.parse_args()
     
-    crawl_gearvn_to_excel(chunk=args.chunk, total_chunks=args.total_chunks)
+    crawl_gearvn_to_excel(chunk=args.chunk, total_chunks=args.total_chunks, get_links_only=args.get_links_only)

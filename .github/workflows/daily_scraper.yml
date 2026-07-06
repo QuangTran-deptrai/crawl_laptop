@@ -20,7 +20,7 @@ jobs:
         script_info: 
           - { name: fptshop_scrape.py, os: self-hosted, prefix: fptshop }
           - { name: phongvu_scrape.py, os: self-hosted, prefix: phongvu }
-          - { name: tgdd_scrape.py, os: ubuntu-latest, prefix: tgdd }
+          - { name: tgdd_scrape.py, os: self-hosted, prefix: tgdd }
           - { name: cellphones_scrape.py, os: ubuntu-latest, prefix: cellphones }
           - { name: gearvn_scrape.py, os: ubuntu-latest, prefix: gearvn }
 
@@ -77,7 +77,7 @@ jobs:
         script_info: 
           - { name: fptshop_scrape.py, os: self-hosted, prefix: fptshop }
           - { name: phongvu_scrape.py, os: self-hosted, prefix: phongvu }
-          - { name: tgdd_scrape.py, os: ubuntu-latest, prefix: tgdd }
+          - { name: tgdd_scrape.py, os: self-hosted, prefix: tgdd }
           - { name: cellphones_scrape.py, os: ubuntu-latest, prefix: cellphones }
           - { name: gearvn_scrape.py, os: ubuntu-latest, prefix: gearvn }
         chunk: [1, 2, 3, 4, 5]

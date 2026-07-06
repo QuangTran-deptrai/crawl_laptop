@@ -8,6 +8,7 @@ on:
 env:
   PYTHONUNBUFFERED: "1" # Ép Python in log ra ngay lập tức để không bị tưởng là treo
   PYTHONIOENCODING: "utf-8" # Fix lỗi in tiếng Việt (Unicode) trên Windows
+  TZ: "Asia/Ho_Chi_Minh" # Set múi giờ Việt Nam cho máy chủ ảo Ubuntu
 
 jobs:
   scrape:

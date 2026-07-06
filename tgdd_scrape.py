@@ -159,6 +159,7 @@ def crawl_tgdd_to_excel(chunk=1, total_chunks=1, get_links_only=False):
                 browser.close()
                 return
             
+        if not os.path.exists(PENDING_FILE):
             # Sort danh sách để đảm bảo phân rã đều giữa các shard
             product_links = sorted(list(set(product_links)))
             

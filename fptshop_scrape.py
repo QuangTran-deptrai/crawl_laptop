@@ -156,9 +156,6 @@ def crawl_fptshop_to_excel(chunk=1, total_chunks=1, get_links_only=False):
                 import sys
                 sys.exit(1)
                 
-            # Lọc trùng
-            product_links = sorted(list(set(product_links)))
-            
             if get_links_only:
                 with open(LINKS_FILE, "w", encoding="utf-8") as f:
                     for link in product_links:
@@ -167,6 +164,10 @@ def crawl_fptshop_to_excel(chunk=1, total_chunks=1, get_links_only=False):
                 browser.close()
                 return
                 
+        if not os.path.exists(PENDING_FILE):
+            # Lọc trùng
+            product_links = sorted(list(set(product_links)))
+            
             # Chia nhỏ danh sách link (Sharding)
             chunk_size = math.ceil(len(product_links) / total_chunks)
             start_idx = (chunk - 1) * chunk_size

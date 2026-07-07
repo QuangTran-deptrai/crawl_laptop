@@ -10,11 +10,14 @@ SEARCH_URL = "https://phongvu.vn/c/laptop"
 def calculate_discount(current_price, original_price, scraped_discount=""):
     try:
         import re
+        if 'liên hệ' in str(current_price).lower() or 'liên hệ' in str(original_price).lower():
+            return ""
         c = int(re.sub(r'[^\d]', '', str(current_price)))
         o = int(re.sub(r'[^\d]', '', str(original_price)))
-        if o > c and o > 0:
+        if o > c and o > 0 and c > 0:
             percent = round((o - c) / o * 100)
-            return f"-{percent}%"
+            if percent <= 70:
+                return f"-{percent}%"
     except Exception:
         pass
         

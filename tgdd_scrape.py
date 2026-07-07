@@ -13,11 +13,16 @@ BASE_URL = "https://www.thegioididong.com"
 def calculate_discount(current_price, original_price, scraped_discount=""):
     try:
         import re
+        # Bỏ qua nếu giá chứa text "liên hệ"
+        if 'liên hệ' in str(current_price).lower() or 'liên hệ' in str(original_price).lower():
+            return ""
         c = int(re.sub(r'[^\d]', '', str(current_price)))
         o = int(re.sub(r'[^\d]', '', str(original_price)))
-        if o > c and o > 0:
+        if o > c and o > 0 and c > 0:
             percent = round((o - c) / o * 100)
-            return f"-{percent}%"
+            # Sanity check: giảm giá quá 70% thì rất khả nghi, ưu tiên dùng giá trị scraped nếu có
+            if percent <= 70:
+                return f"-{percent}%"
     except Exception:
         pass
         

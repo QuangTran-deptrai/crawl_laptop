@@ -11,11 +11,14 @@ SEARCH_URL = "https://fptshop.com.vn/may-tinh-xach-tay"
 def calculate_discount(current_price, original_price, scraped_discount=""):
     try:
         import re
+        if 'liên hệ' in str(current_price).lower() or 'liên hệ' in str(original_price).lower():
+            return ""
         c = int(re.sub(r'[^\d]', '', str(current_price)))
         o = int(re.sub(r'[^\d]', '', str(original_price)))
-        if o > c and o > 0:
+        if o > c and o > 0 and c > 0:
             percent = round((o - c) / o * 100)
-            return f"-{percent}%"
+            if percent <= 70:
+                return f"-{percent}%"
     except Exception:
         pass
         
@@ -301,6 +304,17 @@ def crawl_fptshop_to_excel(chunk=1, total_chunks=1, get_links_only=False):
                 # 2. Giá hiện tại & Giá gốc
                 current_price = prod_page.css('.text-black-opacity-100.h4-bold::text, #price-product span.text-black-opacity-100::text, .st-price-main::text, .text-black-opacity-100.h6-semibold::text').get(default="").strip()
                 original_price = prod_page.css('.text-neutral-gray-5.line-through::text, .text-textOnWhiteSecondary.line-through::text, .st-price-sub::text').get(default="").strip()
+                
+                # Validate: Giá phải chứa "đ"/"₫" hoặc có >= 6 chữ số để tránh lấy nhầm điểm tích lũy (+1.722)
+                import re as re_price
+                def _is_valid_price(p):
+                    if not p: return False
+                    digits = re_price.sub(r'[^\d]', '', p)
+                    return ('đ' in p.lower() or '₫' in p) and len(digits) >= 4 or len(digits) >= 6
+                if not _is_valid_price(current_price):
+                    current_price = ""
+                if not _is_valid_price(original_price):
+                    original_price = ""
                 
                 # 3. Khuyến mãi
                 # Lấy text trong danh sách thẻ li của phần "Ưu đãi được hưởng"

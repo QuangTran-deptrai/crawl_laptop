@@ -12,11 +12,14 @@ SEARCH_URL = "https://cellphones.com.vn/laptop.html"
 def calculate_discount(current_price, original_price, scraped_discount=""):
     try:
         import re
+        if 'liên hệ' in str(current_price).lower() or 'liên hệ' in str(original_price).lower():
+            return ""
         c = int(re.sub(r'[^\d]', '', str(current_price)))
         o = int(re.sub(r'[^\d]', '', str(original_price)))
-        if o > c and o > 0:
+        if o > c and o > 0 and c > 0:
             percent = round((o - c) / o * 100)
-            return f"-{percent}%"
+            if percent <= 70:
+                return f"-{percent}%"
     except Exception:
         pass
         
@@ -247,6 +250,18 @@ def crawl_cellphones_to_excel(chunk=1, total_chunks=1, get_links_only=False):
                     current_price = main_box.css('.tpt-price::text, .product__price--show::text, .sale-price::text').get(default="").strip()
                     original_price = main_box.css('.tpt-price-through::text, .product__price--through::text, .base-price::text').get(default="").strip()
                     discount_percent = main_box.css('.product__price--percent-detail span::text').get(default="").strip()
+                    
+                # Xử lý sản phẩm "Liên hệ để báo giá" hoặc giá không hợp lệ
+                import re as re_price
+                def _is_valid_price(p):
+                    if not p: return False
+                    if 'liên hệ' in p.lower() or 'liên hệ' in p.lower(): return False
+                    digits = re_price.sub(r'[^\d]', '', p)
+                    return len(digits) >= 6  # Giá VND hợp lệ phải >= 6 chữ số (ví dụ: 100.000)
+                if not _is_valid_price(current_price):
+                    current_price = "Liên hệ" if current_price and ('liên hệ' in current_price.lower()) else current_price
+                if not _is_valid_price(original_price):
+                    original_price = ""
                     
                 discount_percent = calculate_discount(current_price, original_price, discount_percent)
                 

@@ -75,10 +75,11 @@ async def upload_existing_data():
                 
             print(f"Tìm thấy {len(rows) - 1} sản phẩm. Đang đẩy lên Google Sheets...")
             
+            # Gửi data KHÔNG kèm header (dòng đầu), chỉ gửi dữ liệu để nối tiếp vào cuối sheet
             payload = {
-                "clear": True,
+                "clear": False,
                 "sheet_name": sheet_name,
-                "rows": rows
+                "rows": rows[1:]  # Bỏ dòng tiêu đề, chỉ gửi dữ liệu
             }
             
             async with httpx.AsyncClient() as client:

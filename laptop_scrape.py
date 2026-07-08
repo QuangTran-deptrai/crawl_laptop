@@ -1,5 +1,5 @@
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 import time
 from patchright.sync_api import sync_playwright
 from scrapling.parser import Adaptor
@@ -121,7 +121,7 @@ def crawl_laptop_gearvn_to_excel():
             print(f"[{index}/{len(product_links)}] Đang xử lý: {url}")
             
             try:
-                crawl_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                crawl_time = datetime.now(timezone(timedelta(hours=7))).strftime("%Y-%m-%d %H:%M:%S")
                 
                 # Truy cập trang chi tiết sản phẩm
                 page.goto(url, wait_until="domcontentloaded")

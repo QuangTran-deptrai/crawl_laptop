@@ -1,5 +1,5 @@
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 import time
 import argparse
 import math
@@ -185,7 +185,7 @@ def crawl_tgdd_to_excel(chunk=1, total_chunks=1, get_links_only=False):
             print(f"[{index}/{len(product_links)}] Đang xử lý: {url}")
             
             try:
-                crawl_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                crawl_time = datetime.now(timezone(timedelta(hours=7))).strftime("%Y-%m-%d %H:%M:%S")
                 
                 page.goto(url, wait_until="domcontentloaded")
                 time.sleep(2)

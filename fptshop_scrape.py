@@ -1,5 +1,5 @@
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 import time
 from patchright.sync_api import sync_playwright
 from scrapling.parser import Adaptor
@@ -255,7 +255,7 @@ def crawl_fptshop_to_excel(chunk=1, total_chunks=1, get_links_only=False):
             consecutive_cf_fails = 0
             
             try:
-                crawl_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                crawl_time = datetime.now(timezone(timedelta(hours=7))).strftime("%Y-%m-%d %H:%M:%S")
                 
                 # Cố gắng đóng popup (nếu có)
                 close_popup(page)

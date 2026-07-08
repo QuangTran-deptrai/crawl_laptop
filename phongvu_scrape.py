@@ -1,7 +1,7 @@
 import urllib.parse
 from bs4 import BeautifulSoup
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 import time
 from patchright.sync_api import sync_playwright
 
@@ -353,7 +353,7 @@ def crawl_phongvu_to_excel(chunk=1, total_chunks=1, get_links_only=False):
                     "Khuyến Mãi": promo_text,
                     "Cấu Hình Chi Tiết": specs.strip(),
                     "URL": link,
-                    "Ngày Thu Thập": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    "Ngày Thu Thập": datetime.now(timezone(timedelta(hours=7))).strftime("%Y-%m-%d %H:%M:%S")
                 })
             except Exception as e:
                 print(f"    x Lỗi khi xử lý {link}: {e}")

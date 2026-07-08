@@ -29,14 +29,15 @@ function doPost(e) {
       sheet = ss.insertSheet(targetSheetName);
     }
     
-    // Nếu cờ clear = true, tiến hành xóa toàn bộ dữ liệu cũ
+    // Nếu cờ clear = true, xóa toàn bộ dữ liệu cũ rồi ghi từ đầu (bao gồm header)
     if (clearData) {
       sheet.clearContents();
+      sheet.getRange(1, 1, rows.length, rows[0].length).setValues(rows);
+    } else {
+      // Append mode: Tìm dòng cuối cùng có dữ liệu rồi ghi tiếp bên dưới
+      var lastRow = sheet.getLastRow();
+      sheet.getRange(lastRow + 1, 1, rows.length, rows[0].length).setValues(rows);
     }
-    
-    // Ghi dữ liệu mới vào sheet
-    // getRange(dòng bắt đầu, cột bắt đầu, số dòng, số cột)
-    sheet.getRange(1, 1, rows.length, rows[0].length).setValues(rows);
     
     return ContentService.createTextOutput(JSON.stringify({
       "status": "success",

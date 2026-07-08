@@ -213,7 +213,6 @@ jobs:
           # Đẩy lên GG Sheets
           python sync_excel_to_sheets.py
           
-          # Commit file all
-          git add -A *.xlsx || true
-          git add retry_count.txt || true
+          # Commit file all (dùng git add -A để bắt cả file chunk đã bị xóa)
+          git add -A
           git diff --quiet && git diff --staged --quiet || (git commit -m "Auto-update: Hoàn thành cào dữ liệu [skip ci]" && git pull --rebase && git push)

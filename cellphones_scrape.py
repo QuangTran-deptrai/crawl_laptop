@@ -101,7 +101,7 @@ def crawl_cellphones_to_excel(chunk=1, total_chunks=1, get_links_only=False):
             with open(LINKS_FILE, "r", encoding="utf-8") as f:
                 product_links = [line.strip() for line in f if line.strip()]
         else:
-            page.goto(SEARCH_URL, wait_until="domcontentloaded")
+            page.goto(SEARCH_URL, wait_until="domcontentloaded", timeout=60000)
             time.sleep(3)
             close_popup(page)
             
@@ -187,10 +187,13 @@ def crawl_cellphones_to_excel(chunk=1, total_chunks=1, get_links_only=False):
         for index, url in enumerate(product_links, start=1):
             print(f"[{index}/{len(product_links)}] Đang xử lý: {url}")
             
-            try:
+            max_retries = 2
+            success = False
+            for retry in range(max_retries):
+              try:
                 crawl_time = datetime.now(timezone(timedelta(hours=7))).strftime("%Y-%m-%d %H:%M:%S")
                 
-                page.goto(url, wait_until="domcontentloaded")
+                page.goto(url, wait_until="domcontentloaded", timeout=60000)
                 time.sleep(4)
                 close_popup(page)
                 
@@ -313,9 +316,26 @@ def crawl_cellphones_to_excel(chunk=1, total_chunks=1, get_links_only=False):
                 
                 final_results.append(laptop_data)
                 print(f"    ✓ Đã lấy: {product_name}")
+                success = True
+                break  # Thoát vòng retry
                 
-            except Exception as e:
-                print(f"    ! Gặp lỗi khi xử lý link {url}: {e}")
+              except Exception as e:
+                if retry < max_retries - 1:
+                    print(f"    ! Lỗi (lần {retry+1}): {e}. Đang thử lại...")
+                    # Reset page khi bị lỗi timeout/navigation để phục hồi
+                    try:
+                        page.close()
+                        page = context.new_page()
+                        context.on("page", lambda p: p.close() if p != page else None)
+                    except Exception:
+                        pass
+                    time.sleep(3)
+                else:
+                    print(f"    ! Gặp lỗi khi xử lý link {url}: {e}")
+            
+            if success:
+                consecutive_cf_fails = 0
+            else:
                 consecutive_cf_fails += 1
                 
                 if consecutive_cf_fails >= 3:
@@ -329,8 +349,14 @@ def crawl_cellphones_to_excel(chunk=1, total_chunks=1, get_links_only=False):
                     print(f"    💾 Đã lưu {len(remaining_links)} link dang dở vào {PENDING_FILE}")
                     
                     break
-            else:
-                consecutive_cf_fails = 0
+                    
+                # Reset page sau khi fail hết retry
+                try:
+                    page.close()
+                    page = context.new_page()
+                    context.on("page", lambda p: p.close() if p != page else None)
+                except Exception:
+                    pass
         
         browser.close()
         

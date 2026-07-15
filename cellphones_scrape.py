@@ -85,6 +85,7 @@ def crawl_cellphones_to_excel(chunk=1, total_chunks=1, get_links_only=False):
             viewport={"width": 1366, "height": 768},
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
         )
+        context.set_default_timeout(30000)  # Timeout mặc định 30s cho mọi thao tác Playwright
         page = context.new_page()
         # Chặn các tab/popup mới bật lên (không tính tab chính) để không làm gián đoạn script
         context.on("page", lambda p: p.close() if p != page else None)
@@ -209,7 +210,7 @@ def crawl_cellphones_to_excel(chunk=1, total_chunks=1, get_links_only=False):
                     # Nút xem cấu hình chi tiết có class .button__show-modal-technical và text "Xem tất cả"
                     btn_specs = page.locator('#thong-so-ky-thuat, .cps-block-technicalInfo').get_by_text("Xem tất cả", exact=False).first
                     
-                    if btn_specs.is_visible():
+                    if btn_specs.is_visible(timeout=3000):
                         btn_specs.click(force=True)
                         time.sleep(3)
                 except Exception:
@@ -268,7 +269,25 @@ def crawl_cellphones_to_excel(chunk=1, total_chunks=1, get_links_only=False):
                     
                 discount_percent = calculate_discount(current_price, original_price, discount_percent)
                 
-                # 4. Khuyến mãi
+                # 4. Tình trạng hàng (TẠM HẾT HÀNG / SẮP VỀ HÀNG)
+                stock_status = ""
+                try:
+                    status_text = page.evaluate('''() => {
+                        let btn = document.querySelector('.order-button strong');
+                        if (btn) {
+                            let text = btn.textContent.trim().toUpperCase();
+                            if (text.includes('TẠM HẾT HÀNG') || text.includes('SẮP VỀ HÀNG')) {
+                                return text;
+                            }
+                        }
+                        return '';
+                    }''')
+                    if status_text:
+                        stock_status = status_text
+                except Exception:
+                    pass
+                
+                # 5. Khuyến mãi
                 promo_list = []
                 try:
                     promos = page.evaluate('''() => {
@@ -308,6 +327,7 @@ def crawl_cellphones_to_excel(chunk=1, total_chunks=1, get_links_only=False):
                     "Giá Hiện Tại": current_price,
                     "Giá Gốc": original_price,
                     "Giảm Giá": discount_percent,
+                    "Tình Trạng": stock_status,
                     "Khuyến Mãi": promo_string,
                     "Cấu Hình Chi Tiết": specs_string,
                     "Link Sản Phẩm": url,

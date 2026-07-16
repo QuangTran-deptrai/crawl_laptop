@@ -86,6 +86,25 @@ def crawl_cellphones_to_excel(chunk=1, total_chunks=1, get_links_only=False):
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
         )
         context.set_default_timeout(30000)  # Timeout mặc định 30s cho mọi thao tác Playwright
+        
+        # Chặn resource nặng (media, font, tracking) để trang load nhanh hơn và không bị đứng
+        def block_heavy_resources(route):
+            url_lower = route.request.url.lower()
+            resource = route.request.resource_type
+            # Block media, font, và các tracking/ads scripts nặng
+            blocked_types = {"media", "font", "websocket"}
+            blocked_domains = ["youtube.com", "youtu.be", "doubleclick.net", "google-analytics.com",
+                               "googletagmanager.com", "facebook.net", "fbcdn.net", "tiktok.com",
+                               "zalo.me", "hotjar.com", "clarity.ms", "adsrvr.org", "adnxs.com"]
+            if resource in blocked_types:
+                return route.abort()
+            for domain in blocked_domains:
+                if domain in url_lower:
+                    return route.abort()
+            return route.continue_()
+        
+        context.route("**/*", block_heavy_resources)
+        
         page = context.new_page()
         # Chặn các tab/popup mới bật lên (không tính tab chính) để không làm gián đoạn script
         context.on("page", lambda p: p.close() if p != page else None)
@@ -195,23 +214,28 @@ def crawl_cellphones_to_excel(chunk=1, total_chunks=1, get_links_only=False):
                 crawl_time = datetime.now(timezone(timedelta(hours=7))).strftime("%Y-%m-%d %H:%M:%S")
                 
                 try:
-                    page.goto(url, wait_until="domcontentloaded", timeout=60000)
+                    page.goto(url, wait_until="commit", timeout=45000)
                 except Exception as nav_err:
                     err_msg = str(nav_err).lower()
-                    if "canceled" in err_msg or "cancel" in err_msg or "aborted" in err_msg:
-                        print(f"    ⚠ Navigation bị canceled, tạo page mới và thử lại...")
+                    if any(kw in err_msg for kw in ["canceled", "cancel", "aborted", "timeout"]):
+                        print(f"    ⚠ Navigation lỗi ({type(nav_err).__name__}), tạo page mới...")
                         try:
                             page.close()
                         except Exception:
                             pass
                         page = context.new_page()
-                        context.on("page", lambda p: p.close() if p != page else None)
-                        time.sleep(3)
-                        page.goto(url, wait_until="domcontentloaded", timeout=60000)
+                        time.sleep(2)
+                        page.goto(url, wait_until="commit", timeout=45000)
                     else:
                         raise nav_err
                 
-                time.sleep(4)
+                # Đợi DOM sẵn sàng (có timeout riêng, không block vô hạn)
+                try:
+                    page.wait_for_load_state("domcontentloaded", timeout=15000)
+                except Exception:
+                    pass  # Tiếp tục dù DOM chưa hoàn toàn ready, dữ liệu chính thường đã có
+                
+                time.sleep(2)
                 close_popup(page)
                 
                 # Cuộn trang từ từ để không vô tình kích hoạt video autoplay và tìm mục cấu hình

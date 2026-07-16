@@ -188,13 +188,29 @@ def crawl_cellphones_to_excel(chunk=1, total_chunks=1, get_links_only=False):
         for index, url in enumerate(product_links, start=1):
             print(f"[{index}/{len(product_links)}] Đang xử lý: {url}")
             
-            max_retries = 2
+            max_retries = 3
             success = False
             for retry in range(max_retries):
               try:
                 crawl_time = datetime.now(timezone(timedelta(hours=7))).strftime("%Y-%m-%d %H:%M:%S")
                 
-                page.goto(url, wait_until="domcontentloaded", timeout=60000)
+                try:
+                    page.goto(url, wait_until="domcontentloaded", timeout=60000)
+                except Exception as nav_err:
+                    err_msg = str(nav_err).lower()
+                    if "canceled" in err_msg or "cancel" in err_msg or "aborted" in err_msg:
+                        print(f"    ⚠ Navigation bị canceled, tạo page mới và thử lại...")
+                        try:
+                            page.close()
+                        except Exception:
+                            pass
+                        page = context.new_page()
+                        context.on("page", lambda p: p.close() if p != page else None)
+                        time.sleep(3)
+                        page.goto(url, wait_until="domcontentloaded", timeout=60000)
+                    else:
+                        raise nav_err
+                
                 time.sleep(4)
                 close_popup(page)
                 

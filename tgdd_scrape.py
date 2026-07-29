@@ -57,6 +57,9 @@ def fetch_laptop_links_from_sitemap():
     """Lấy danh sách link laptop + lastmod từ sitemap XML của TGDĐ (chỉ 3 tháng gần nhất)."""
     NS = {"ns": "http://www.sitemaps.org/schemas/sitemap/0.9"}
     product_links = {}  # {url: lastmod}
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
     
     # Tính mốc 3 tháng trước
     now = datetime.now()
@@ -68,12 +71,18 @@ def fetch_laptop_links_from_sitemap():
     
     # Bước 1: Tải sitemap index để lấy danh sách sub-sitemap
     print(f"  >> Đang tải sitemap index: {SITEMAP_INDEX_URL}")
-    try:
-        resp = httpx.get(SITEMAP_INDEX_URL, timeout=30, follow_redirects=True)
-        resp.raise_for_status()
-        root = ET.fromstring(resp.content)
-    except Exception as e:
-        print(f"  ! Lỗi khi tải sitemap index: {e}")
+    root = None
+    for attempt in range(3):
+        try:
+            resp = httpx.get(SITEMAP_INDEX_URL, headers=headers, timeout=60, follow_redirects=True)
+            resp.raise_for_status()
+            root = ET.fromstring(resp.content)
+            break
+        except Exception as e:
+            print(f"  ! Lỗi khi tải sitemap index (lần {attempt+1}/3): {e}")
+            time.sleep(3)
+            
+    if root is None:
         return product_links
     
     # Bước 2: Lọc sub-sitemap theo 3 tháng gần nhất
@@ -96,25 +105,28 @@ def fetch_laptop_links_from_sitemap():
     # Bước 3: Tải từng sub-sitemap và lọc link laptop
     for idx, sub_url in enumerate(sub_sitemaps, 1):
         print(f"  >> [{idx}/{len(sub_sitemaps)}] Đang tải: {sub_url}")
-        try:
-            resp = httpx.get(sub_url, timeout=30, follow_redirects=True)
-            resp.raise_for_status()
-            sub_root = ET.fromstring(resp.content)
-            
-            count = 0
-            for url_el in sub_root.findall("ns:url", NS):
-                loc = url_el.findtext("ns:loc", default="", namespaces=NS)
-                lastmod = url_el.findtext("ns:lastmod", default="", namespaces=NS)
+        for attempt in range(3):
+            try:
+                resp = httpx.get(sub_url, headers=headers, timeout=60, follow_redirects=True)
+                resp.raise_for_status()
+                sub_root = ET.fromstring(resp.content)
                 
-                # Chỉ lấy link laptop (URL chứa /laptop/)
-                if loc and "/laptop/" in loc.lower():
-                    if loc not in product_links:
-                        product_links[loc] = lastmod
-                        count += 1
-            
-            print(f"     --> Tìm thấy {count} link laptop mới (tổng: {len(product_links)})")
-        except Exception as e:
-            print(f"     ! Lỗi khi tải {sub_url}: {e}")
+                count = 0
+                for url_el in sub_root.findall("ns:url", NS):
+                    loc = url_el.findtext("ns:loc", default="", namespaces=NS)
+                    lastmod = url_el.findtext("ns:lastmod", default="", namespaces=NS)
+                    
+                    # Chỉ lấy link laptop (URL chứa /laptop/)
+                    if loc and "/laptop/" in loc.lower():
+                        if loc not in product_links:
+                            product_links[loc] = lastmod
+                            count += 1
+                
+                print(f"     --> Tìm thấy {count} link laptop mới (tổng: {len(product_links)})")
+                break
+            except Exception as e:
+                print(f"     ! Lỗi khi tải {sub_url} (lần {attempt+1}/3): {e}")
+                time.sleep(3)
     
     return product_links
 

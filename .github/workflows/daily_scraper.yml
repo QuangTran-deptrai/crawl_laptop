@@ -20,7 +20,7 @@ jobs:
         script_info: 
           - { name: fptshop_scrape.py, os: self-hosted, prefix: fptshop, sitemap_only: false }
           - { name: phongvu_scrape.py, os: self-hosted, prefix: phongvu, sitemap_only: false }
-          - { name: tgdd_scrape.py, os: ubuntu-latest, prefix: tgdd, sitemap_only: true }
+          - { name: tgdd_scrape.py, os: self-hosted, prefix: tgdd, sitemap_only: true }
           - { name: cellphones_scrape.py, os: ubuntu-latest, prefix: cellphones, sitemap_only: false }
           - { name: gearvn_scrape.py, os: ubuntu-latest, prefix: gearvn, sitemap_only: true }
 

@@ -78,6 +78,8 @@ def merge_chunks():
                         worksheet.column_dimensions[col_letter].width = 45
                     elif 'url' in col_name.lower() or 'link' in col_name.lower():
                         worksheet.column_dimensions[col_letter].width = 40
+                    elif 'ngày' in col_name.lower():
+                        worksheet.column_dimensions[col_letter].width = 22
                     else:
                         worksheet.column_dimensions[col_letter].width = 18
                         

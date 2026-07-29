@@ -3,22 +3,20 @@ from datetime import datetime, timezone, timedelta
 import time
 import argparse
 import math
+import httpx
+import xml.etree.ElementTree as ET
 from patchright.sync_api import sync_playwright
 from scrapling.parser import Adaptor
 
-# Cấu hình URL hệ thống GearVN — crawl nhiều trang collection
-COLLECTION_URLS = [
-    "https://gearvn.com/collections/laptop-gaming-gia-tu-20-den-25-trieu",
-    "https://gearvn.com/collections/laptop-gaming-ban-chay",
-    "https://gearvn.com/collections/laptop-gaming-gia-tu-25-den-35-trieu",
-    "https://gearvn.com/collections/laptop-gaming-tren-35-trieu",
-    "https://gearvn.com/collections/laptop-van-phong-ban-chay",
-    "https://gearvn.com/collections/laptop-hoc-tap-va-lam-viec-duoi-15tr",
-    "https://gearvn.com/collections/laptop-hoc-tap-va-lam-viec-tu-15tr-den-20tr",
-    "https://gearvn.com/collections/laptop-hoc-tap-va-lam-viec-tren-20-trieu"
+# Cấu hình URL hệ thống GearVN — dùng sitemap để lấy link sản phẩm
+SITEMAP_URLS = [
+    "https://gearvn.com/sitemap_products_1.xml",
+    "https://gearvn.com/sitemap_products_2.xml",
+    "https://gearvn.com/sitemap_products_3.xml",
+    "https://gearvn.com/sitemap_products_4.xml",
+    "https://gearvn.com/sitemap_products_5.xml",
 ]
 BASE_URL = "https://gearvn.com"
-SEARCH_URL = "https://gearvn.com/collections/laptop"
 
 def calculate_discount(current_price, original_price, scraped_discount=""):
     try:
@@ -78,6 +76,35 @@ def close_popup(page):
             pass
         return ""
 
+def fetch_laptop_links_from_sitemap():
+    """Lấy danh sách link laptop + lastmod từ sitemap XML của GearVN (không cần browser)."""
+    NS = {"ns": "http://www.sitemaps.org/schemas/sitemap/0.9"}
+    product_links = {}  # {url: lastmod}
+    
+    for sitemap_url in SITEMAP_URLS:
+        print(f"  >> Đang tải sitemap: {sitemap_url}")
+        try:
+            resp = httpx.get(sitemap_url, timeout=30, follow_redirects=True)
+            resp.raise_for_status()
+            root = ET.fromstring(resp.content)
+            
+            count = 0
+            for url_el in root.findall("ns:url", NS):
+                loc = url_el.findtext("ns:loc", default="", namespaces=NS)
+                lastmod = url_el.findtext("ns:lastmod", default="", namespaces=NS)
+                
+                # Chỉ lấy link laptop (slug chứa /products/laptop)
+                if loc and "/products/laptop" in loc.lower():
+                    if loc not in product_links:
+                        product_links[loc] = lastmod
+                        count += 1
+            
+            print(f"     --> Tìm thấy {count} link laptop mới (tổng: {len(product_links)})")
+        except Exception as e:
+            print(f"     ! Lỗi khi tải {sitemap_url}: {e}")
+    
+    return product_links
+
 def crawl_gearvn_to_excel(chunk=1, total_chunks=1, get_links_only=False):
     import time
     import glob
@@ -92,107 +119,72 @@ def crawl_gearvn_to_excel(chunk=1, total_chunks=1, get_links_only=False):
         print(f"Mảnh {chunk} đã hoàn thành từ trước. Bỏ qua.")
         return
         
-    print("=== [LEVEL 0] ĐANG QUÉT DANH MỤC TRÊN GEARVN ===")
+    print("=== [LEVEL 0] LẤY LINK LAPTOP TỪ SITEMAP GEARVN ===")
+    
+    product_links = []  # list of (url, lastmod)
+    lastmod_map = {}    # {url: lastmod}
+    LINKS_FILE = "gearvn_links.txt"
+    
+    if os.path.exists(PENDING_FILE):
+        print(f"=== ĐANG CHẠY TIẾP TỤC MẢNH {chunk} (RETRY) ===")
+        with open(PENDING_FILE, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                parts = line.split("\t")
+                url = parts[0]
+                lastmod = parts[1] if len(parts) > 1 else ""
+                product_links.append(url)
+                lastmod_map[url] = lastmod
+    elif not get_links_only and os.path.exists(LINKS_FILE):
+        print(f"=== TÌM THẤY FILE {LINKS_FILE}, BỎ QUA LEVEL 0 ===")
+        with open(LINKS_FILE, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                parts = line.split("\t")
+                url = parts[0]
+                lastmod = parts[1] if len(parts) > 1 else ""
+                product_links.append(url)
+                lastmod_map[url] = lastmod
+    else:
+        # Lấy link từ sitemap (không cần browser)
+        sitemap_data = fetch_laptop_links_from_sitemap()
+        
+        for url, lastmod in sitemap_data.items():
+            product_links.append(url)
+            lastmod_map[url] = lastmod
+        
+        print(f"\n=== TỔNG CỘNG: {len(product_links)} link laptop từ sitemap (đã loại trùng) ===")
+        
+        # Sort để đảm bảo sharding đều
+        product_links = sorted(product_links)
+        
+        if get_links_only:
+            with open(LINKS_FILE, "w", encoding="utf-8") as f:
+                for link in product_links:
+                    f.write(f"{link}\t{lastmod_map.get(link, '')}\n")
+            print(f"--> Đã lưu {len(product_links)} link ra file {LINKS_FILE}")
+            return
+    
+    if not os.path.exists(PENDING_FILE):
+        # Chia nhỏ danh sách link (Sharding)
+        product_links = sorted(list(set(product_links)))
+        chunk_size = math.ceil(len(product_links) / total_chunks)
+        start_idx = (chunk - 1) * chunk_size
+        end_idx = start_idx + chunk_size
+        product_links = product_links[start_idx:end_idx]
+        
+        print(f"--> [SHARDING] Mảnh {chunk}/{total_chunks}: Cào {len(product_links)} link (từ {start_idx} đến {end_idx-1})")
+    
+    print("\n=== [LEVEL 1] TRUY CẬP TỪNG LINK ĐỂ LẤY THÔNG TIN CHI TIẾT ===")
     
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=False)
         context = browser.new_context(viewport={"width": 1920, "height": 1080})
         page = context.new_page()
-        
-        product_links = []
-        LINKS_FILE = "gearvn_links.txt"
-        
-        if os.path.exists(PENDING_FILE):
-            print(f"=== ĐANG CHẠY TIẾP TỤC MẢNH {chunk} (RETRY) ===")
-            with open(PENDING_FILE, "r", encoding="utf-8") as f:
-                product_links = [line.strip() for line in f if line.strip()]
-        elif not get_links_only and os.path.exists(LINKS_FILE):
-            print(f"=== TÌM THẤY FILE {LINKS_FILE}, BỎ QUA LEVEL 0 ===")
-            with open(LINKS_FILE, "r", encoding="utf-8") as f:
-                product_links = [line.strip() for line in f if line.strip()]
-        else:
-            for col_index, collection_url in enumerate(COLLECTION_URLS, start=1):
-                print(f"\n--- [{col_index}/{len(COLLECTION_URLS)}] Đang quét: {collection_url} ---")
-                
-                page.goto(collection_url, wait_until="domcontentloaded")
-                
-                # Đóng popup quảng cáo nếu có
-                time.sleep(3)
-                close_popup(page)
-                
-                # Chờ sản phẩm load xong
-                try:
-                    page.wait_for_selector('.proloop-name a', timeout=15000)
-                except Exception:
-                    print("    ! Timeout chờ sản phẩm load.")
-                
-                time.sleep(2)
-                
-                # Bấm nút "Xem thêm sản phẩm" để load hết tất cả sản phẩm
-                load_more_count = 0
-                while True:
-                    try:
-                        load_more_btn = page.locator('#load_more, #load_more_search')
-                        if load_more_btn.count() == 0 or not load_more_btn.first.is_visible():
-                            break
-                        
-                        load_more_btn.first.scroll_into_view_if_needed()
-                        time.sleep(0.5)
-                        load_more_btn.first.click()
-                        load_more_count += 1
-                        print(f"    >> Đã bấm 'Xem thêm sản phẩm' lần {load_more_count}, đang chờ load...")
-                        time.sleep(3)
-                    except Exception:
-                        break
-                
-                if load_more_count > 0:
-                    print(f"    >> Đã load thêm {load_more_count} lần.")
-                
-                time.sleep(1)
-                
-                # Parse HTML bằng Adaptor
-                html_content = page.content()
-                search_page = Adaptor(html_content, url=collection_url)
-                product_blocks = search_page.css('.proloop-block')
-                
-                count_new = 0
-                for block in product_blocks:
-                    name_at_search = block.css('.proloop-name a::text').get(default="").strip()
-                    
-                    # Chỉ lấy sản phẩm là Laptop
-                    if not name_at_search or not name_at_search.lower().startswith("laptop"):
-                        continue
-                    
-                    relative_link = block.css('.proloop-name a::attr(href)').get(default="")
-                    if relative_link:
-                        full_link = BASE_URL + relative_link if relative_link.startswith('/') else relative_link
-                        if full_link not in product_links:
-                            product_links.append(full_link)
-                            count_new += 1
-                
-                print(f"    --> Tìm thấy {count_new} link mới (tổng: {len(product_links)})")
-            
-            print(f"\n=== TỔNG CỘNG: {len(product_links)} link laptop (đã loại trùng) ===")
-            
-            # Loại bỏ trùng lặp
-            product_links = sorted(list(set(product_links)))
-            
-            if get_links_only:
-                with open(LINKS_FILE, "w", encoding="utf-8") as f:
-                    for link in product_links:
-                        f.write(link + "\n")
-                print(f"--> Đã lưu {len(product_links)} link ra file {LINKS_FILE}")
-                browser.close()
-                return
-        if not os.path.exists(PENDING_FILE):
-            # Chia nhỏ danh sách link (Sharding)
-            chunk_size = math.ceil(len(product_links) / total_chunks)
-            start_idx = (chunk - 1) * chunk_size
-            end_idx = start_idx + chunk_size
-            product_links = product_links[start_idx:end_idx]
-            
-            print(f"--> [SHARDING] Mảnh {chunk}/{total_chunks}: Cào {len(product_links)} link (từ {start_idx} đến {end_idx-1})")
-        print("\n=== [LEVEL 1] TRUY CẬP TỪNG LINK ĐỂ LẤY THÔNG TIN CHI TIẾT ===")
         
         final_results = []
         consecutive_cf_fails = 0
@@ -342,6 +334,7 @@ def crawl_gearvn_to_excel(chunk=1, total_chunks=1, get_links_only=False):
                     "Quà Tặng / Ghi Chú": desc_short,
                     "Cấu Hình Chi Tiết": specs_string,
                     "Link Sản Phẩm": url,
+                    "Ngày Cập Nhật (Sitemap)": lastmod_map.get(url, ""),
                     "Ngày Giờ Crawl": crawl_time
                 }
                 
@@ -362,7 +355,7 @@ def crawl_gearvn_to_excel(chunk=1, total_chunks=1, get_links_only=False):
                     remaining_links = product_links[failed_start_idx:]
                     with open(PENDING_FILE, "w", encoding="utf-8") as f:
                         for r_link in remaining_links:
-                            f.write(r_link + "\n")
+                            f.write(f"{r_link}\t{lastmod_map.get(r_link, '')}\n")
                     print(f"    💾 Đã lưu {len(remaining_links)} link dang dở vào {PENDING_FILE}")
                     
                     break

@@ -1,13 +1,17 @@
 import pandas as pd
 from datetime import datetime, timezone, timedelta
+from dateutil.relativedelta import relativedelta
 import time
 import argparse
 import math
+import re
+import httpx
+import xml.etree.ElementTree as ET
 from patchright.sync_api import sync_playwright
 from scrapling.parser import Adaptor
 
-# Cấu hình URL hệ thống Thế Giới Di Động
-SEARCH_URL = "https://www.thegioididong.com/laptop"
+# Cấu hình URL hệ thống Thế Giới Di Động — dùng sitemap để lấy link sản phẩm
+SITEMAP_INDEX_URL = "https://www.thegioididong.com/newsitemap/sitemap-product"
 BASE_URL = "https://www.thegioididong.com"
 
 def calculate_discount(current_price, original_price, scraped_discount=""):
@@ -49,6 +53,71 @@ def close_popup(page):
     except Exception:
         pass
 
+def fetch_laptop_links_from_sitemap():
+    """Lấy danh sách link laptop + lastmod từ sitemap XML của TGDĐ (chỉ 3 tháng gần nhất)."""
+    NS = {"ns": "http://www.sitemaps.org/schemas/sitemap/0.9"}
+    product_links = {}  # {url: lastmod}
+    
+    # Tính mốc 3 tháng trước
+    now = datetime.now()
+    cutoff = now - relativedelta(months=3)
+    cutoff_year = cutoff.year
+    cutoff_month = cutoff.month
+    
+    print(f"  >> Chỉ lấy sitemap từ tháng {cutoff_month}/{cutoff_year} trở đi")
+    
+    # Bước 1: Tải sitemap index để lấy danh sách sub-sitemap
+    print(f"  >> Đang tải sitemap index: {SITEMAP_INDEX_URL}")
+    try:
+        resp = httpx.get(SITEMAP_INDEX_URL, timeout=30, follow_redirects=True)
+        resp.raise_for_status()
+        root = ET.fromstring(resp.content)
+    except Exception as e:
+        print(f"  ! Lỗi khi tải sitemap index: {e}")
+        return product_links
+    
+    # Bước 2: Lọc sub-sitemap theo 3 tháng gần nhất
+    sub_sitemaps = []
+    for sitemap_el in root.findall("ns:sitemap", NS):
+        loc = sitemap_el.findtext("ns:loc", default="", namespaces=NS)
+        if not loc:
+            continue
+        
+        # URL dạng: sitemap-product-2026-7?page=1
+        match = re.search(r'sitemap-product-(\d{4})-(\d{1,2})', loc)
+        if match:
+            year = int(match.group(1))
+            month = int(match.group(2))
+            if (year > cutoff_year) or (year == cutoff_year and month >= cutoff_month):
+                sub_sitemaps.append(loc)
+    
+    print(f"  >> Tìm thấy {len(sub_sitemaps)} sub-sitemap trong 3 tháng gần nhất")
+    
+    # Bước 3: Tải từng sub-sitemap và lọc link laptop
+    for idx, sub_url in enumerate(sub_sitemaps, 1):
+        print(f"  >> [{idx}/{len(sub_sitemaps)}] Đang tải: {sub_url}")
+        try:
+            resp = httpx.get(sub_url, timeout=30, follow_redirects=True)
+            resp.raise_for_status()
+            sub_root = ET.fromstring(resp.content)
+            
+            count = 0
+            for url_el in sub_root.findall("ns:url", NS):
+                loc = url_el.findtext("ns:loc", default="", namespaces=NS)
+                lastmod = url_el.findtext("ns:lastmod", default="", namespaces=NS)
+                
+                # Chỉ lấy link laptop (URL chứa /laptop/)
+                if loc and "/laptop/" in loc.lower():
+                    if loc not in product_links:
+                        product_links[loc] = lastmod
+                        count += 1
+            
+            print(f"     --> Tìm thấy {count} link laptop mới (tổng: {len(product_links)})")
+        except Exception as e:
+            print(f"     ! Lỗi khi tải {sub_url}: {e}")
+    
+    return product_links
+
 def crawl_tgdd_to_excel(chunk=1, total_chunks=1, get_links_only=False):
     import time
     import glob
@@ -63,120 +132,79 @@ def crawl_tgdd_to_excel(chunk=1, total_chunks=1, get_links_only=False):
         print(f"Mảnh {chunk} đã hoàn thành từ trước. Bỏ qua.")
         return
         
-    print("=== [LEVEL 0] ĐANG QUÉT TRANG TÌM KIẾM TGDĐ ===")
+    print("=== [LEVEL 0] LẤY LINK LAPTOP TỪ SITEMAP TGDĐ ===")
+    
+    product_links = []  # list of url
+    lastmod_map = {}    # {url: lastmod}
+    LINKS_FILE = "tgdd_links.txt"
+    
+    if os.path.exists(PENDING_FILE):
+        print(f"=== ĐANG CHẠY TIẾP TỤC MẢNH {chunk} (RETRY) ===")
+        with open(PENDING_FILE, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                parts = line.split("\t")
+                url = parts[0]
+                lastmod = parts[1] if len(parts) > 1 else ""
+                product_links.append(url)
+                lastmod_map[url] = lastmod
+    elif not get_links_only and os.path.exists(LINKS_FILE):
+        print(f"=== TÌM THẤY FILE {LINKS_FILE}, BỎ QUA LEVEL 0 ===")
+        with open(LINKS_FILE, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                parts = line.split("\t")
+                url = parts[0]
+                lastmod = parts[1] if len(parts) > 1 else ""
+                product_links.append(url)
+                lastmod_map[url] = lastmod
+    else:
+        # Lấy link từ sitemap (không cần browser)
+        sitemap_data = fetch_laptop_links_from_sitemap()
+        
+        if not sitemap_data:
+            print("❌ Lỗi: Không thể lấy link laptop từ sitemap TGDĐ. Dừng script.")
+            import sys
+            sys.exit(1)
+        
+        for url, lastmod in sitemap_data.items():
+            product_links.append(url)
+            lastmod_map[url] = lastmod
+        
+        print(f"\n=== TỔNG CỘNG: {len(product_links)} link laptop từ sitemap (đã loại trùng) ===")
+        
+        # Sort để đảm bảo sharding đều
+        product_links = sorted(product_links)
+        
+        if get_links_only:
+            with open(LINKS_FILE, "w", encoding="utf-8") as f:
+                for link in product_links:
+                    f.write(f"{link}\t{lastmod_map.get(link, '')}\n")
+            print(f"--> Đã lưu {len(product_links)} link ra file {LINKS_FILE}")
+            return
+    
+    if not os.path.exists(PENDING_FILE):
+        # Sort danh sách để đảm bảo phân rã đều giữa các shard
+        product_links = sorted(list(set(product_links)))
+        
+        # Chia nhỏ danh sách link (Sharding)
+        chunk_size = math.ceil(len(product_links) / total_chunks)
+        start_idx = (chunk - 1) * chunk_size
+        end_idx = start_idx + chunk_size
+        product_links = product_links[start_idx:end_idx]
+        
+        print(f"--> [SHARDING] Mảnh {chunk}/{total_chunks}: Cào {len(product_links)} link (từ {start_idx} đến {end_idx-1})")
+    
+    print("\n=== [LEVEL 1] TRUY CẬP TỪNG LINK ĐỂ LẤY THÔNG TIN ===")
     
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=False)
         context = browser.new_context(viewport={"width": 1920, "height": 1080})
         page = context.new_page()
-        
-        product_links = []
-        
-        LINKS_FILE = "tgdd_links.txt"
-        
-        if os.path.exists(PENDING_FILE):
-            print(f"=== ĐANG CHẠY TIẾP TỤC MẢNH {chunk} (RETRY) ===")
-            with open(PENDING_FILE, "r", encoding="utf-8") as f:
-                product_links = [line.strip() for line in f if line.strip()]
-        elif not get_links_only and os.path.exists(LINKS_FILE):
-            print(f"=== TÌM THẤY FILE {LINKS_FILE}, BỎ QUA LEVEL 0 ===")
-            with open(LINKS_FILE, "r", encoding="utf-8") as f:
-                product_links = [line.strip() for line in f if line.strip()]
-        else:
-            for attempt in range(3):
-                try:
-                    product_links = []
-                    # TGDĐ thường kiểm tra location, ta set mặc định hoặc cứ bypass
-                    page.goto(SEARCH_URL, wait_until="domcontentloaded")
-                    time.sleep(3)
-                    close_popup(page)
-                    
-                    print(f"    >> Đang tải tất cả sản phẩm (bấm Xem thêm)... (Lần thử {attempt + 1}/3)")
-                    load_more_count = 0
-                    while True:
-                        page.evaluate("window.scrollTo(0, document.body.scrollHeight);")
-                        time.sleep(2)
-                        
-                        try:
-                            clicked = page.evaluate('''() => {
-                                let btns = document.querySelectorAll('.view-more a, .see-more-btn');
-                                for (let btn of btns) {
-                                    let text = (btn.innerText || "").toLowerCase();
-                                    // Phải đảm bảo nút thực sự hiển thị (không bị display: none) và chứa chữ "laptop"
-                                    if (btn.offsetWidth > 0 && btn.offsetHeight > 0 && text.includes("xem thêm") && text.includes("laptop")) {
-                                        btn.click();
-                                        return true;
-                                    }
-                                }
-                                return false;
-                            }''')
-                            
-                            if clicked:
-                                load_more_count += 1
-                                print(f"    >> Đã bấm 'Xem thêm' lần {load_more_count}")
-                                time.sleep(3)
-                                continue
-                        except Exception:
-                            pass
-                            
-                        break # Thoát nếu không tìm thấy nút hoặc không bấm được nữa
-                        
-                    time.sleep(2)
-                    
-                    html_content = page.content()
-                    search_page = Adaptor(html_content, url=SEARCH_URL)
-                    
-                    # Link sản phẩm nằm trong .item a.main-contain
-                    product_blocks = search_page.css('li.item a.main-contain')
-                    
-                    for a_tag in product_blocks:
-                        relative_link = a_tag.css('::attr(href)').get(default="")
-                        if relative_link:
-                            full_link = BASE_URL + relative_link if relative_link.startswith('/') else relative_link
-                            if full_link not in product_links:
-                                product_links.append(full_link)
-                                
-                    print(f"--> Tìm thấy tổng cộng {len(product_links)} link laptop từ trang tìm kiếm TGDĐ.")
-                    
-                    if len(product_links) > 0:
-                        break
-                    else:
-                        print("    ! Mảnh này không tìm thấy link nào ở trang chủ, có thể bị chặn. Đang thử lại...")
-                        time.sleep(5)
-                except Exception as e:
-                    print(f"    ! Lỗi tải trang tìm kiếm (lần {attempt + 1}/3): {e}")
-                    time.sleep(5)
-            
-            if len(product_links) == 0:
-                print("❌ Lỗi: Đã thử 3 lần nhưng không thể tải danh sách sản phẩm TGDĐ. Dừng script.")
-                browser.close()
-                import sys
-                sys.exit(1)
-                
-            # Sort danh sách để đảm bảo phân rã đều giữa các shard
-            product_links = sorted(list(set(product_links)))
-            
-            if get_links_only:
-                with open(LINKS_FILE, "w", encoding="utf-8") as f:
-                    for link in product_links:
-                        f.write(link + "\n")
-                print(f"--> Đã lưu {len(product_links)} link ra file {LINKS_FILE}")
-                browser.close()
-                return
-            
-        if not os.path.exists(PENDING_FILE):
-            # Sort danh sách để đảm bảo phân rã đều giữa các shard
-            product_links = sorted(list(set(product_links)))
-            
-            # Chia nhỏ danh sách link (Sharding)
-            chunk_size = math.ceil(len(product_links) / total_chunks)
-            start_idx = (chunk - 1) * chunk_size
-            end_idx = start_idx + chunk_size
-            product_links = product_links[start_idx:end_idx]
-            
-            print(f"--> [SHARDING] Mảnh {chunk}/{total_chunks}: Cào {len(product_links)} link (từ {start_idx} đến {end_idx-1})")
-            
-        print("\n=== [LEVEL 1] TRUY CẬP TỪNG LINK ĐỂ LẤY THÔNG TIN ===")
         
         final_results = []
         consecutive_cf_fails = 0
@@ -315,6 +343,7 @@ def crawl_tgdd_to_excel(chunk=1, total_chunks=1, get_links_only=False):
                     "Khuyến Mãi": promo_string,
                     "Cấu Hình Chi Tiết": specs_string,
                     "Link Sản Phẩm": url,
+                    "Ngày Cập Nhật (Sitemap)": lastmod_map.get(url, ""),
                     "Ngày Giờ Crawl": crawl_time
                 }
                 
@@ -332,7 +361,7 @@ def crawl_tgdd_to_excel(chunk=1, total_chunks=1, get_links_only=False):
                     remaining_links = product_links[failed_start_idx:]
                     with open(PENDING_FILE, "w", encoding="utf-8") as f:
                         for r_link in remaining_links:
-                            f.write(r_link + "\n")
+                            f.write(f"{r_link}\t{lastmod_map.get(r_link, '')}\n")
                     print(f"    💾 Đã lưu {len(remaining_links)} link dang dở vào {PENDING_FILE}")
                     
                     break

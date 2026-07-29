@@ -18,11 +18,11 @@ jobs:
       fail-fast: false
       matrix:
         script_info: 
-          - { name: fptshop_scrape.py, os: self-hosted, prefix: fptshop }
-          - { name: phongvu_scrape.py, os: self-hosted, prefix: phongvu }
-          - { name: tgdd_scrape.py, os: self-hosted, prefix: tgdd }
-          - { name: cellphones_scrape.py, os: ubuntu-latest, prefix: cellphones }
-          - { name: gearvn_scrape.py, os: ubuntu-latest, prefix: gearvn }
+          - { name: fptshop_scrape.py, os: self-hosted, prefix: fptshop, sitemap_only: false }
+          - { name: phongvu_scrape.py, os: self-hosted, prefix: phongvu, sitemap_only: false }
+          - { name: tgdd_scrape.py, os: ubuntu-latest, prefix: tgdd, sitemap_only: true }
+          - { name: cellphones_scrape.py, os: ubuntu-latest, prefix: cellphones, sitemap_only: false }
+          - { name: gearvn_scrape.py, os: ubuntu-latest, prefix: gearvn, sitemap_only: true }
 
     steps:
       - name: Lấy mã nguồn
@@ -41,16 +41,22 @@ jobs:
           pip install -r requirements.txt
 
       - name: Cài đặt Playwright & Patchright Chromium
+        if: ${{ matrix.script_info.sitemap_only == false }}
         run: |
           playwright install chromium
           patchright install chromium
 
-      - name: Cài đặt màn hình ảo (Xvfb) (Chỉ Ubuntu)
-        if: matrix.script_info.os == 'ubuntu-latest'
+      - name: Cài đặt màn hình ảo (Xvfb) (Chỉ Ubuntu, không cần cho sitemap)
+        if: matrix.script_info.os == 'ubuntu-latest' && matrix.script_info.sitemap_only == false
         run: sudo apt-get update && sudo apt-get install -y xvfb
 
-      - name: Quét toàn bộ Link (Ubuntu)
-        if: matrix.script_info.os == 'ubuntu-latest'
+      - name: Quét Link bằng Sitemap (không cần browser)
+        if: ${{ matrix.script_info.sitemap_only == true }}
+        continue-on-error: true
+        run: python ${{ matrix.script_info.name }} --get-links-only
+
+      - name: Quét toàn bộ Link (Ubuntu, cần browser)
+        if: matrix.script_info.os == 'ubuntu-latest' && matrix.script_info.sitemap_only == false
         continue-on-error: true
         run: xvfb-run python ${{ matrix.script_info.name }} --get-links-only
 

@@ -18,10 +18,7 @@ jobs:
       fail-fast: false
       matrix:
         script_info: 
-          - { name: fptshop_scrape.py, os: self-hosted, prefix: fptshop, sitemap_only: false }
-          - { name: phongvu_scrape.py, os: self-hosted, prefix: phongvu, sitemap_only: false }
           - { name: tgdd_scrape.py, os: self-hosted, prefix: tgdd, sitemap_only: true }
-          - { name: cellphones_scrape.py, os: ubuntu-latest, prefix: cellphones, sitemap_only: false }
           - { name: gearvn_scrape.py, os: ubuntu-latest, prefix: gearvn, sitemap_only: true }
 
     steps:
@@ -81,10 +78,7 @@ jobs:
       fail-fast: false # Đừng huỷ các tiến trình khác nếu có 1 web bị lỗi
       matrix:
         script_info: 
-          - { name: fptshop_scrape.py, os: self-hosted, prefix: fptshop }
-          - { name: phongvu_scrape.py, os: self-hosted, prefix: phongvu }
           - { name: tgdd_scrape.py, os: self-hosted, prefix: tgdd }
-          - { name: cellphones_scrape.py, os: ubuntu-latest, prefix: cellphones }
           - { name: gearvn_scrape.py, os: ubuntu-latest, prefix: gearvn }
         chunk: [1, 2, 3, 4, 5]
 

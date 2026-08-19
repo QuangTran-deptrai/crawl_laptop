@@ -204,126 +204,125 @@ def crawl_gearvn_to_excel(chunk=1, total_chunks=1, get_links_only=False):
                 # Truy cập trang chi tiết sản phẩm
                 page.goto(url, wait_until="domcontentloaded")
                 
-                # Đóng popup quảng cáo nếu có
-                time.sleep(2)
-                close_popup(page)
-                
-                # Chờ khối thông tin sản phẩm load
+                # Chờ h1 (tên sản phẩm) load — selector ổn định nhất
                 try:
-                    page.wait_for_selector('.product-info', timeout=15000)
+                    page.wait_for_selector('h1', timeout=15000)
                 except Exception:
-                    print(f"    ! Timeout chờ .product-info tại {url}")
+                    print(f"    ! Timeout chờ h1 tại {url}")
                 
-                # Chờ thêm để trang load xong
-                time.sleep(2)
+                # Chờ thêm để trang render xong (Next.js hydration)
+                time.sleep(3)
                 
-                # Cuộn xuống và click nút "Đọc tiếp bài viết" để mở rộng bảng cấu hình
-                try:
-                    expand_btn = page.locator('button.expandable-btn')
-                    if expand_btn.count() > 0 and expand_btn.first.is_visible():
-                        expand_btn.first.scroll_into_view_if_needed()
-                        time.sleep(0.5)
-                        expand_btn.first.click()
-                        time.sleep(1.5)
-                        print(f"    >> Đã click 'Đọc tiếp bài viết'")
-                except Exception:
-                    pass
+                # === LẤY DỮ LIỆU TỪ JSON-LD (chuẩn SEO, ổn định nhất) ===
+                json_ld_data = page.evaluate('''() => {
+                    let scripts = document.querySelectorAll('script[type="application/ld+json"]');
+                    for (let s of scripts) {
+                        try {
+                            let data = JSON.parse(s.textContent);
+                            if (data["@type"] === "Product") return data;
+                        } catch(e) {}
+                    }
+                    return null;
+                }''')
                 
-                # Chờ phần khuyến mãi load xong (được inject bằng JS bên ngoài)
-                try:
-                    # Chờ 1 trong 2 cấu trúc khuyến mãi xuất hiện
-                    page.wait_for_function('''() => {
-                        return document.querySelector('#gvn-promotions .gvn-promo-item') || 
-                               document.querySelector('#gift-promo--app .gift-promo--lists li');
-                    }''', timeout=8000)
-                except Exception:
-                    pass  # Có thể sản phẩm không có khuyến mãi
-                
-                time.sleep(1)
-                
-                # Parse HTML (sau khi đã mở rộng bài viết)
-                prod_html = page.content()
-                prod_page = Adaptor(prod_html, url=url)
-                info_block = prod_page.css('.product-info')
-                
-                if not info_block:
-                    print(f"    ! Không tìm thấy .product-info tại {url}")
+                if not json_ld_data:
+                    print(f"    ! Không tìm thấy JSON-LD Product tại {url}")
                     continue
                 
-                # --- LẤY CẤU HÌNH CHI TIẾT TỪ BẢNG #tblGeneralAttribute ---
-                specs_dict = {}
-                spec_rows = prod_page.css('#tblGeneralAttribute tr')
+                # 1. Tên sản phẩm (từ JSON-LD)
+                product_name = json_ld_data.get("name", "").strip()
                 
-                for row in spec_rows:
-                    tds = row.css('td')
-                    if len(tds) >= 2:
-                        # Cột 1: tên thông số (nằm trong <strong> hoặc text trực tiếp)
-                        key = " ".join(tds[0].css('*::text').getall()).strip()
-                        # Cột 2: giá trị thông số
-                        val = " ".join(tds[1].css('*::text').getall()).strip()
-                        
-                        if key and val:
-                            specs_dict[key] = val
+                # 2-3. Giá hiện tại & giá gốc (từ DOM để lấy định dạng tiền Việt)
+                price_data = page.evaluate('''() => {
+                    // Giá hiện tại: chữ đỏ lớn, class chứa "red" và "bold"
+                    let currentEl = document.querySelector('span[class*="red-700"][class*="bold"]');
+                    let currentPrice = currentEl ? currentEl.innerText.trim() : "";
+                    
+                    // Giá gốc: chữ gạch ngang (line-through)
+                    let originalEl = document.querySelector('span[class*="line-through"]');
+                    let originalPrice = originalEl ? originalEl.innerText.trim() : "";
+                    
+                    // Phần trăm giảm giá
+                    let discountEl = document.querySelector('span[class*="red-600"][class*="red-50"]');
+                    let discount = discountEl ? discountEl.innerText.trim() : "";
+                    
+                    return { currentPrice, originalPrice, discount };
+                }''')
                 
-                # Fallback: nếu không có #tblGeneralAttribute, thử lấy từ bảng specs sidebar cũ
-                if not specs_dict:
-                    spec_rows_fallback = prod_page.css('#gvn-specs-container-table tr.gvn-spec-row')
-                    for row in spec_rows_fallback:
-                        if row.css('th[colspan]'):
-                            continue
-                        key = row.css('th::text').get(default="").strip()
-                        val_parts = row.css('td::text').getall()
-                        val = " ".join([v.strip() for v in val_parts if v.strip()])
-                        if key and val:
-                            specs_dict[key] = val
+                current_price = price_data.get("currentPrice", "")
+                original_price = price_data.get("originalPrice", "")
+                discount_percent = price_data.get("discount", "")
                 
-                # 1. Tên sản phẩm
-                product_name = info_block.css('.product-name h1::text').get(default="").strip()
+                # Fallback giá từ JSON-LD nếu DOM không lấy được
+                if not current_price:
+                    offers = json_ld_data.get("offers", {})
+                    price_val = offers.get("price", "")
+                    if price_val:
+                        current_price = f"{int(price_val):,}đ".replace(",", ".")
+                    
+                    price_spec = offers.get("priceSpecification", {})
+                    orig_val = price_spec.get("price", "")
+                    if orig_val and not original_price:
+                        original_price = f"{int(orig_val):,}đ".replace(",", ".")
                 
-                # 2. Giá hiện tại
-                current_price = info_block.css('.product-price .pro-price::text').get(default="").strip()
-                
-                # 3. Giá gốc (nếu có giảm giá)
-                original_price = info_block.css('.product-price del::text').get(default="").strip()
-                
-                # 4. Phần trăm giảm giá
-                discount_percent = info_block.css('.product-price .pro-percent::text, .product-price .product-discount::text').get(default="").strip()
                 discount_percent = calculate_discount(current_price, original_price, discount_percent)
                 
-                # 5. Khuyến mãi (hỗ trợ cả 2 cấu trúc)
+                # 4. Cấu hình chi tiết (từ JSON-LD additionalProperty)
+                specs_dict = {}
+                for prop in json_ld_data.get("additionalProperty", []):
+                    key = prop.get("name", "").strip()
+                    val = prop.get("value", "").strip()
+                    if key and val:
+                        specs_dict[key] = val
+                
+                # 5. Khuyến mãi (từ DOM — section "Ưu đãi đi kèm")
                 promo_list = []
                 try:
-                    # Dùng JS lấy trực tiếp text trên trình duyệt sẽ chính xác và gom được cả desc
                     promos = page.evaluate('''() => {
                         let items = [];
                         
-                        // Cấu trúc 1: #gvn-promotions .gvn-promo-item
-                        document.querySelectorAll('#gvn-promotions .gvn-promo-item').forEach(el => {
-                            let title = el.querySelector('.gvn-promo-title');
-                            let desc = el.querySelector('.gvn-promo-desc');
-                            let text = "";
-                            if (title) text += title.innerText.trim();
-                            if (desc && desc.innerText.trim() !== "") text += " (" + desc.innerText.trim() + ")";
-                            if (text) items.push(text);
-                        });
+                        // Cấu trúc mới (Next.js): section chứa "Ưu đãi đi kèm"
+                        // Tìm tất cả các div con chứa icon gift/tag + text khuyến mãi
+                        let promoSection = document.querySelector('section[class*="surface-red"]');
+                        if (promoSection) {
+                            // Lấy từng block khuyến mãi (mỗi block có border-b)
+                            let promoBlocks = promoSection.querySelectorAll('div[class*="border-b"], div:not([class*="border-b"]):last-child');
+                            promoSection.querySelectorAll('div[class*="gap"][class*="py"]').forEach(el => {
+                                let text = el.innerText.trim();
+                                if (text && text.length > 5) {
+                                    // Loại bỏ label "Ưu đãi theo phạm vi" nếu có, chỉ lấy nội dung
+                                    text = text.replace(/^Ưu đãi theo phạm vi\\s*/i, '').trim();
+                                    if (text) items.push(text);
+                                }
+                            });
+                        }
                         
-                        // Cấu trúc 2: #gift-promo--app .gift-promo--lists li
-                        document.querySelectorAll('#gift-promo--app .gift-promo--lists li').forEach(el => {
-                            if (el && el.innerText.trim() !== "") {
-                                items.push(el.innerText.trim());
-                            }
-                        });
+                        // Fallback: cấu trúc cũ (nếu còn tồn tại)
+                        if (items.length === 0) {
+                            document.querySelectorAll('#gvn-promotions .gvn-promo-item').forEach(el => {
+                                let title = el.querySelector('.gvn-promo-title');
+                                let desc = el.querySelector('.gvn-promo-desc');
+                                let text = "";
+                                if (title) text += title.innerText.trim();
+                                if (desc && desc.innerText.trim() !== "") text += " (" + desc.innerText.trim() + ")";
+                                if (text) items.push(text);
+                            });
+                            document.querySelectorAll('#gift-promo--app .gift-promo--lists li').forEach(el => {
+                                if (el && el.innerText.trim() !== "") {
+                                    items.push(el.innerText.trim());
+                                }
+                            });
+                        }
                         
                         return items;
                     }''')
                     if promos:
                         promo_list = promos
-                except Exception as e:
+                except Exception:
                     pass
                 
-                # 6. Mô tả ngắn / quà tặng bổ sung từ .product-desc-short
-                desc_short_all = info_block.css('.product-desc-short *::text').getall()
-                desc_short = " | ".join([t.strip() for t in desc_short_all if t.strip()])
+                # 6. Mô tả ngắn (không còn trong giao diện mới, bỏ qua)
+                desc_short = ""
                 
                 # Cấu hình chi tiết
                 specs_string = " | ".join([f"{k}: {v}" for k, v in specs_dict.items()])

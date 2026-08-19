@@ -232,18 +232,22 @@ def crawl_gearvn_to_excel(chunk=1, total_chunks=1, get_links_only=False):
                 # 1. Tên sản phẩm (từ JSON-LD)
                 product_name = json_ld_data.get("name", "").strip()
                 
-                # 2-3. Giá hiện tại & giá gốc (từ DOM để lấy định dạng tiền Việt)
+                # 2-3. Giá hiện tại & giá gốc (từ DOM, scope vào khu vực sản phẩm chính)
                 price_data = page.evaluate('''() => {
+                    // Scope vào khu vực thông tin sản phẩm chính (tránh bắt nhầm giá từ "Sản phẩm tương tự")
+                    let region = document.querySelector('[data-product-summary-region="true"]');
+                    if (!region) region = document;
+                    
                     // Giá hiện tại: chữ đỏ lớn, class chứa "red" và "bold"
-                    let currentEl = document.querySelector('span[class*="red-700"][class*="bold"]');
+                    let currentEl = region.querySelector('span[class*="red-700"][class*="bold"]');
                     let currentPrice = currentEl ? currentEl.innerText.trim() : "";
                     
-                    // Giá gốc: chữ gạch ngang (line-through)
-                    let originalEl = document.querySelector('span[class*="line-through"]');
+                    // Giá gốc: chữ gạch ngang (line-through) — chỉ trong khu vực sản phẩm chính
+                    let originalEl = region.querySelector('span[class*="line-through"]');
                     let originalPrice = originalEl ? originalEl.innerText.trim() : "";
                     
                     // Phần trăm giảm giá
-                    let discountEl = document.querySelector('span[class*="red-600"][class*="red-50"]');
+                    let discountEl = region.querySelector('span[class*="red-600"][class*="red-50"]');
                     let discount = discountEl ? discountEl.innerText.trim() : "";
                     
                     return { currentPrice, originalPrice, discount };

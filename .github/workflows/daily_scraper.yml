@@ -85,7 +85,7 @@ jobs:
           - { name: tgdd_scrape.py, os: self-hosted, prefix: tgdd }
           - { name: phongvu_scrape.py, os: self-hosted, prefix: phongvu }
           - { name: gearvn_scrape.py, os: ubuntu-latest, prefix: gearvn }
-          - { name: fptshop_scrape.py, os: ubuntu-latest, prefix: fpt }
+          - { name: fptshop_scrape.py, os: self-hosted, prefix: fpt }
           - { name: cellphones_requests.py, os: ubuntu-latest, prefix: cellphones }
           - { name: xgear_requests.py, os: ubuntu-latest, prefix: xgear }
         chunk: [1, 2, 3, 4, 5]

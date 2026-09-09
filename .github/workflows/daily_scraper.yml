@@ -21,7 +21,7 @@ jobs:
           - { name: tgdd_scrape.py, os: self-hosted, prefix: tgdd, sitemap_only: true }
           - { name: phongvu_scrape.py, os: self-hosted, prefix: phongvu, sitemap_only: false }
           - { name: gearvn_scrape.py, os: ubuntu-latest, prefix: gearvn, sitemap_only: true }
-          - { name: fptshop_scrape.py, os: ubuntu-latest, prefix: fpt, sitemap_only: false }
+          - { name: fptshop_scrape.py, os: self-hosted, prefix: fpt, sitemap_only: false }
           - { name: cellphones_requests.py, os: ubuntu-latest, prefix: cellphones, sitemap_only: true }
           - { name: xgear_requests.py, os: ubuntu-latest, prefix: xgear, sitemap_only: true }
 

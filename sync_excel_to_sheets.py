@@ -14,6 +14,7 @@ FILES_TO_SYNC = [
     {"file": "laptop_cellphones_all.xlsx", "sheet_name": "CellphoneS"},
     {"file": "laptop_phongvu_all.xlsx", "sheet_name": "PhongVu"},
     {"file": "laptop_gearvn_all.xlsx", "sheet_name": "GearVN"},
+    {"file": "laptop_xgear_all.xlsx", "sheet_name": "XGear"},
 ]
 
 async def send_telegram_msg(message: str):

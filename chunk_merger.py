@@ -16,7 +16,7 @@ def clean_price(val):
 
 def merge_chunks():
     # Các trang web cần gộp
-    stores = ["fptshop", "phongvu", "tgdd", "cellphones", "gearvn"]
+    stores = ["fptshop", "phongvu", "tgdd", "cellphones", "gearvn", "xgear"]
     
     for store in stores:
         print(f"=== Đang gộp dữ liệu cho {store.upper()} ===")

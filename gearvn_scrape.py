@@ -10,11 +10,7 @@ from scrapling.parser import Adaptor
 
 # Cấu hình URL hệ thống GearVN — dùng sitemap để lấy link sản phẩm
 SITEMAP_URLS = [
-    "https://gearvn.com/sitemap_products_1.xml",
-    "https://gearvn.com/sitemap_products_2.xml",
-    "https://gearvn.com/sitemap_products_3.xml",
-    "https://gearvn.com/sitemap_products_4.xml",
-    "https://gearvn.com/sitemap_products_5.xml",
+    "https://gearvn.com/sitemap-products.xml",
 ]
 BASE_URL = "https://gearvn.com"
 

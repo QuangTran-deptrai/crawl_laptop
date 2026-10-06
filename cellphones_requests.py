@@ -38,7 +38,8 @@ def fetch_page(page, keyword="laptop"):
                             static: {
                                 categories: ["380"],
                                 province_id: 30,
-                                stock: { from: 0 }
+                                stock: { from: 0 },
+                                company_stock_id: [46, 56, 152, 4920]
                             },
                             dynamic: {}
                         },

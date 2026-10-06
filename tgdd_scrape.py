@@ -53,81 +53,53 @@ def close_popup(page):
     except Exception:
         pass
 
-def fetch_laptop_links_from_sitemap():
-    """Lấy danh sách link laptop + lastmod từ sitemap XML của TGDĐ (chỉ 3 tháng gần nhất)."""
-    NS = {"ns": "http://www.sitemaps.org/schemas/sitemap/0.9"}
-    product_links = {}  # {url: lastmod}
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-    }
+def fetch_laptop_links_from_category():
+    """Lấy danh sách link laptop trực tiếp từ trang danh mục TGDĐ bằng Playwright"""
+    print("  >> Đang mở trình duyệt để lấy toàn bộ danh sách laptop từ web (mô phỏng người dùng)...")
+    product_links = {}
     
-    # Tính mốc 3 tháng trước
-    now = datetime.now()
-    cutoff = now - relativedelta(months=3)
-    cutoff_year = cutoff.year
-    cutoff_month = cutoff.month
-    
-    print(f"  >> Chỉ lấy sitemap từ tháng {cutoff_month}/{cutoff_year} trở đi")
-    
-    # Bước 1: Tải sitemap index để lấy danh sách sub-sitemap
-    print(f"  >> Đang tải sitemap index: {SITEMAP_INDEX_URL}")
-    root = None
-    for attempt in range(3):
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        context = browser.new_context(viewport={"width": 1920, "height": 1080})
+        page = context.new_page()
+        
         try:
-            resp = httpx.get(SITEMAP_INDEX_URL, headers=headers, timeout=60, follow_redirects=True)
-            resp.raise_for_status()
-            root = ET.fromstring(resp.content)
-            break
-        except Exception as e:
-            print(f"  ! Lỗi khi tải sitemap index (lần {attempt+1}/3): {e}")
+            page.goto("https://www.thegioididong.com/laptop", wait_until="domcontentloaded", timeout=60000)
             time.sleep(3)
             
-    if root is None:
-        return product_links
-    
-    # Bước 2: Lọc sub-sitemap theo 3 tháng gần nhất
-    sub_sitemaps = []
-    for sitemap_el in root.findall("ns:sitemap", NS):
-        loc = sitemap_el.findtext("ns:loc", default="", namespaces=NS)
-        if not loc:
-            continue
-        
-        # URL dạng: sitemap-product-2026-7?page=1
-        match = re.search(r'sitemap-product-(\d{4})-(\d{1,2})', loc)
-        if match:
-            year = int(match.group(1))
-            month = int(match.group(2))
-            if (year > cutoff_year) or (year == cutoff_year and month >= cutoff_month):
-                sub_sitemaps.append(loc)
-    
-    print(f"  >> Tìm thấy {len(sub_sitemaps)} sub-sitemap trong 3 tháng gần nhất")
-    
-    # Bước 3: Tải từng sub-sitemap và lọc link laptop
-    for idx, sub_url in enumerate(sub_sitemaps, 1):
-        print(f"  >> [{idx}/{len(sub_sitemaps)}] Đang tải: {sub_url}")
-        for attempt in range(3):
-            try:
-                resp = httpx.get(sub_url, headers=headers, timeout=60, follow_redirects=True)
-                resp.raise_for_status()
-                sub_root = ET.fromstring(resp.content)
-                
-                count = 0
-                for url_el in sub_root.findall("ns:url", NS):
-                    loc = url_el.findtext("ns:loc", default="", namespaces=NS)
-                    lastmod = url_el.findtext("ns:lastmod", default="", namespaces=NS)
+            # Đóng popup nếu có
+            page.evaluate("document.querySelectorAll('.popup-login-mdm, .popup__login__overlay').forEach(e => e.style.display = 'none')")
+            
+            clicks = 0
+            while True:
+                try:
+                    btn = page.locator('a:has-text("Xem thêm"), div:has-text("Xem thêm"), .view-more a, .btn-viewmore')
+                    if btn.count() > 0 and btn.first.is_visible():
+                        btn.first.scroll_into_view_if_needed()
+                        btn.first.click()
+                        clicks += 1
+                        print(f"     --> Đã bấm 'Xem thêm' lần {clicks}...")
+                        time.sleep(2.5)
+                    else:
+                        break
+                except Exception:
+                    break
                     
-                    # Chỉ lấy link laptop (URL chứa /laptop/)
-                    if loc and "/laptop/" in loc.lower():
-                        if loc not in product_links:
-                            product_links[loc] = lastmod
-                            count += 1
-                
-                print(f"     --> Tìm thấy {count} link laptop mới (tổng: {len(product_links)})")
-                break
-            except Exception as e:
-                print(f"     ! Lỗi khi tải {sub_url} (lần {attempt+1}/3): {e}")
-                time.sleep(3)
-    
+            print("  >> Đã tải hết trang, đang trích xuất link...")
+            locators = page.locator('ul.listproduct li.item a.main-contain')
+            count = locators.count()
+            for i in range(count):
+                href = locators.nth(i).get_attribute('href')
+                if href and ('/laptop/' in href or '/may-tinh-xach-tay/' in href):
+                    full_url = "https://www.thegioididong.com" + href if not href.startswith('http') else href
+                    product_links[full_url] = "" # Không có lastmod
+                    
+        except Exception as e:
+            print(f"  ! Lỗi khi crawl trang danh mục: {e}")
+        finally:
+            browser.close()
+            
+    print(f"  >> Tìm thấy {len(product_links)} link laptop từ giao diện web.")
     return product_links
 
 def crawl_tgdd_to_excel(chunk=1, total_chunks=1, get_links_only=False):
@@ -175,8 +147,8 @@ def crawl_tgdd_to_excel(chunk=1, total_chunks=1, get_links_only=False):
                 product_links.append(url)
                 lastmod_map[url] = lastmod
     else:
-        # Lấy link từ sitemap (không cần browser)
-        sitemap_data = fetch_laptop_links_from_sitemap()
+        # Lấy link từ giao diện category
+        sitemap_data = fetch_laptop_links_from_category()
         
         if not sitemap_data:
             print("❌ Lỗi: Không thể lấy link laptop từ sitemap TGDĐ. Dừng script.")

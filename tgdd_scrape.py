@@ -71,15 +71,30 @@ def fetch_laptop_links_from_category():
             page.evaluate("document.querySelectorAll('.popup-login-mdm, .popup__login__overlay').forEach(e => e.style.display = 'none')")
             
             clicks = 0
-            while True:
+            last_count = 0
+            max_clicks = 50 # 50 lần * 20 sp = 1000 sp, quá đủ cho 430 máy
+            while clicks < max_clicks:
                 try:
-                    btn = page.locator('a:has-text("Xem thêm"), div:has-text("Xem thêm"), .view-more a, .btn-viewmore')
+                    # Xem số lượng sản phẩm hiện tại
+                    current_count = page.locator('ul.listproduct li.item').count()
+                    
+                    btn = page.locator('.view-more a, .btn-viewmore, a:has-text("Xem thêm laptop")')
+                    if btn.count() == 0 or not btn.first.is_visible():
+                        btn = page.locator('div.view-more a, a:has-text("Xem thêm")') # fallback
+                        
                     if btn.count() > 0 and btn.first.is_visible():
                         btn.first.scroll_into_view_if_needed()
                         btn.first.click()
                         clicks += 1
-                        print(f"     --> Đã bấm 'Xem thêm' lần {clicks}...")
-                        time.sleep(2.5)
+                        time.sleep(3)
+                        
+                        new_count = page.locator('ul.listproduct li.item').count()
+                        print(f"     --> Đã bấm 'Xem thêm' lần {clicks} - Hiện có: {new_count} sản phẩm")
+                        
+                        if new_count == last_count:
+                            print("     --> Số lượng không tăng thêm, dừng load.")
+                            break
+                        last_count = new_count
                     else:
                         break
                 except Exception:

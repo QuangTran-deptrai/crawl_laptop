@@ -59,55 +59,75 @@ def fetch_laptop_links_from_category():
     product_links = {}
     
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
+        browser = p.chromium.launch(headless=False)
         context = browser.new_context(viewport={"width": 1920, "height": 1080})
         page = context.new_page()
         
         try:
             page.goto("https://www.thegioididong.com/laptop", wait_until="domcontentloaded", timeout=60000)
-            time.sleep(3)
+            time.sleep(5)
             
             # Đóng popup nếu có
-            page.evaluate("document.querySelectorAll('.popup-login-mdm, .popup__login__overlay').forEach(e => e.style.display = 'none')")
+            try:
+                page.evaluate("document.querySelectorAll('.popup-login-mdm, .popup__login__overlay').forEach(e => e.style.display = 'none')")
+            except Exception:
+                pass
             
+            # Bấm nút "Xem thêm XXX Laptop" cho đến khi hết
             clicks = 0
             last_count = 0
-            max_clicks = 50 # 50 lần * 20 sp = 1000 sp, quá đủ cho 430 máy
+            max_clicks = 50
             while clicks < max_clicks:
                 try:
-                    # Xem số lượng sản phẩm hiện tại
-                    current_count = page.locator('ul.listproduct li.item').count()
+                    # Nút "Xem thêm" trên TGDĐ mới là <button> chứa text "Xem thêm ... Laptop"
+                    btn = page.locator('button:has-text("Laptop")').filter(has_text="Xem thêm")
+                    if btn.count() == 0:
+                        btn = page.locator('button:has-text("Xem thêm")')
                     
-                    btn = page.locator('.view-more a, .btn-viewmore, a:has-text("Xem thêm laptop")')
-                    if btn.count() == 0 or not btn.first.is_visible():
-                        btn = page.locator('div.view-more a, a:has-text("Xem thêm")') # fallback
-                        
                     if btn.count() > 0 and btn.first.is_visible():
                         btn.first.scroll_into_view_if_needed()
+                        time.sleep(0.5)
                         btn.first.click()
                         clicks += 1
                         time.sleep(3)
                         
-                        new_count = page.locator('ul.listproduct li.item').count()
-                        print(f"     --> Đã bấm 'Xem thêm' lần {clicks} - Hiện có: {new_count} sản phẩm")
+                        new_count = page.evaluate('''() => {
+                            let links = new Set();
+                            document.querySelectorAll('a[href*="/laptop/"]').forEach(a => {
+                                let href = a.href;
+                                if (href && !href.includes('#') && !href.includes('?')) links.add(href);
+                            });
+                            return links.size;
+                        }''')
+                        print(f"     --> Đã bấm 'Xem thêm' lần {clicks} - Hiện có: {new_count} link laptop unique")
                         
-                        if new_count == last_count:
-                            print("     --> Số lượng không tăng thêm, dừng load.")
+                        if new_count <= last_count:
+                            print("     --> Số lượng link unique không tăng thêm, dừng load.")
                             break
                         last_count = new_count
                     else:
+                        print("     --> Không còn nút 'Xem thêm', đã tải hết.")
                         break
-                except Exception:
+                except Exception as e:
+                    print(f"     --> Lỗi khi click: {e}")
                     break
                     
             print("  >> Đã tải hết trang, đang trích xuất link...")
-            locators = page.locator('ul.listproduct li.item a.main-contain')
-            count = locators.count()
-            for i in range(count):
-                href = locators.nth(i).get_attribute('href')
-                if href and ('/laptop/' in href or '/may-tinh-xach-tay/' in href):
-                    full_url = "https://www.thegioididong.com" + href if not href.startswith('http') else href
-                    product_links[full_url] = "" # Không có lastmod
+            
+            # Trích xuất tất cả link laptop unique
+            all_links = page.evaluate('''() => {
+                let links = new Set();
+                document.querySelectorAll('a[href*="/laptop/"]').forEach(a => {
+                    let href = a.href;
+                    if (href && !href.includes('#') && !href.includes('?')) {
+                        links.add(href);
+                    }
+                });
+                return [...links];
+            }''')
+            
+            for link in all_links:
+                product_links[link] = ""
                     
         except Exception as e:
             print(f"  ! Lỗi khi crawl trang danh mục: {e}")

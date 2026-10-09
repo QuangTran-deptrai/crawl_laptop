@@ -145,7 +145,7 @@ jobs:
   sync:
     name: Đồng bộ dữ liệu & Báo cáo
     needs: scrape # Đảm bảo job này chỉ chạy khi 5 máy ảo trên kia đã chạy xong
-    runs-on: ubuntu-latest
+    runs-on: self-hosted # ĐỔI SANG SELF-HOSTED ĐỂ KẾT NỐI POSTGRESQL
     permissions:
       contents: write # Cấp quyền cho lệnh push lên Github
       actions: write # Cấp quyền kích hoạt lại workflow
@@ -220,6 +220,9 @@ jobs:
           
           # Đẩy lên GG Sheets
           python sync_excel_to_sheets.py
+          
+          # Đẩy dữ liệu vào PostgreSQL (LAN)
+          python import_db.py
           
           # Commit file all (dùng git add -A để bắt cả file chunk đã bị xóa)
           git add -A

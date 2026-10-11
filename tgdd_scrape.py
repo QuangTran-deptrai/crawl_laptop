@@ -244,35 +244,25 @@ def crawl_tgdd_to_excel(chunk=1, total_chunks=1, get_links_only=False):
                 page.evaluate("window.scrollTo(0, document.body.scrollHeight / 2);")
                 time.sleep(1)
                 
-                # Mở rộng cấu hình chi tiết (nếu có nút "Xem thêm cấu hình chi tiết" chung)
+                # Mở rộng cấu hình chi tiết (Giao diện Next.js mới)
                 try:
-                    view_more_specs = page.locator('.btn-detail, .btn-short-spec, button:has-text("Xem thêm")')
-                    for i in range(view_more_specs.count()):
-                        if view_more_specs.nth(i).is_visible():
-                            view_more_specs.nth(i).click()
-                            time.sleep(1)
+                    accordion_headers = page.locator('div.cursor-pointer:has(h3)')
+                    for i in range(accordion_headers.count()):
+                        header = accordion_headers.nth(i)
+                        header.scroll_into_view_if_needed()
+                        if header.is_visible():
+                            header.click()
+                            time.sleep(0.5)
                 except Exception:
                     pass
                 
-                # Bấm vào từng nhóm cấu hình (accordion) để load đầy đủ
+                # Bấm "Xem thêm" (nếu có nút Xem thêm chung)
                 try:
-                    box_specifi_links = page.locator('.box-specifi > a')
-                    for i in range(box_specifi_links.count()):
-                        link = box_specifi_links.nth(i)
-                        link.scroll_into_view_if_needed()
-                        if link.is_visible() and "active" not in (link.get_attribute("class") or ""):
-                            link.click()
-                            time.sleep(1.5) # làm từ từ để tránh bị block
-                except Exception:
-                    pass
-                
-                # Bấm "Xem thêm khuyến mãi" (nếu có)
-                try:
-                    promo_view_more = page.locator('.pr-viewmore')
-                    if promo_view_more.count() > 0 and promo_view_more.first.is_visible():
-                        promo_view_more.first.scroll_into_view_if_needed()
-                        promo_view_more.first.click()
-                        time.sleep(0.5)
+                    view_more = page.locator('button:has-text("Xem thêm")')
+                    for i in range(view_more.count()):
+                        if view_more.nth(i).is_visible():
+                            view_more.nth(i).click()
+                            time.sleep(0.5)
                 except Exception:
                     pass
                 
@@ -284,17 +274,18 @@ def crawl_tgdd_to_excel(chunk=1, total_chunks=1, get_links_only=False):
                 
                 # 2. Cấu hình chi tiết
                 specs_dict = {}
-                spec_items = prod_page.css('.parameter__list li, .parameter li, .text-specifi li')
+                spec_items = prod_page.css('.parameter__list li, .parameter li, .text-specifi li, ul.overflow-hidden li.border-b')
                 for li in spec_items:
-                    key = li.css('aside:nth-child(1)::text, .lileft::text, p[class*="left"]::text, div[class*="left"]::text').get(default="").strip()
+                    key = li.css('aside:nth-child(1)::text, .lileft::text, p[class*="left"]::text, div[class*="left"]::text, div.w-200px::text, div.font-600::text').get(default="").strip()
                     if not key:
                         key = " ".join([v.strip() for v in li.css('aside:nth-child(1) *::text, .lileft *::text').getall() if v.strip()])
                         
-                    val = " ".join([v.strip() for v in li.css('aside:nth-child(2) *::text, .liright *::text, p[class*="right"] *::text, div[class*="right"] *::text').getall() if v.strip()])
+                    val = " ".join([v.strip() for v in li.css('aside:nth-child(2) *::text, .liright *::text, p[class*="right"] *::text, div[class*="right"] *::text, div.flex-1 *::text').getall() if v.strip()])
                     if not val:
                         val = li.css('aside:nth-child(2)::text, .liright::text, p[class*="right"]::text, div[class*="right"]::text').get(default="").strip()
                     
                     if key and val:
+                        if key.endswith(':'): key = key[:-1].strip()
                         specs_dict[key] = val
                     else:
                         # Fallback nếu cấu trúc khác
@@ -306,47 +297,36 @@ def crawl_tgdd_to_excel(chunk=1, total_chunks=1, get_links_only=False):
                             val = v
                 
                 # 3. Giá hiện tại & Giá gốc
-                # Ưu tiên lấy giá từ Gói dịch vụ đang active (giá thực tế khi mua online)
-                current_price = prod_page.css('.active[data-pack] span b::text, .active[data-id] span b::text').get(default="").strip()
-                if not current_price:
-                    current_price = prod_page.css('.box-price-present::text').get(default="").strip()
-                if not current_price:
-                    current_price = prod_page.css('.price::text').get(default="").strip()
+                current_price = prod_page.css('span.text-24.font-700.text-red-5::text, .active[data-pack] span b::text, .active[data-id] span b::text, .box-price-present::text, .price::text').get(default="").strip()
                 current_price = current_price.replace("*", "").strip()
                     
-                original_price = prod_page.css('.active[data-pack] span em::text, .active[data-id] span em::text').get(default="").strip()
-                if not original_price:
-                    original_price = prod_page.css('.box-price-old::text').get(default="").strip()
-                if not original_price:
-                    original_price = prod_page.css('.price-old::text').get(default="").strip()
+                original_price = prod_page.css('del.text-gray-5::text, del::text, .active[data-pack] span em::text, .active[data-id] span em::text, .box-price-old::text, .price-old::text').get(default="").strip()
                     
-                discount_percent = prod_page.css('.percent::text, .box-price-percent::text').get(default="").strip()
+                discount_percent = prod_page.css('del + span.text-red-5::text, .percent::text, .box-price-percent::text').get(default="").strip()
                 discount_percent = calculate_discount(current_price, original_price, discount_percent)
                 
-                # 4. Khuyến mãi (TGDĐ thường nằm trong .divb-right)
+                # 4. Khuyến mãi (Giao diện Next.js mới)
                 promo_list = []
                 try:
-                    promos = page.evaluate('''() => {
-                        let items = [];
-                        // Khuyến mãi thông thường
-                        document.querySelectorAll('.divb-right, .pr-item .divb-right').forEach(el => {
-                            let text = el.innerText.trim();
-                            // Loại bỏ các khoảng trắng và newline thừa
-                            text = text.replace(/\\n+/g, " - ");
-                            if (text && !items.includes(text)) items.push(text);
-                        });
-                        // Khuyến mãi Back to school hoặc các ưu đãi tương tự
-                        document.querySelectorAll('.backtoschool > div').forEach(el => {
-                            let title = el.querySelector('b') ? el.querySelector('b').innerText.trim() : "";
-                            let desc = el.querySelector('span') ? el.querySelector('span').innerText.trim() : "";
-                            let text = (title + " - " + desc).trim();
-                            text = text.replace(/\\n+/g, " ");
-                            if (text && text !== "-" && !items.includes(text)) items.push(text);
-                        });
-                        return items;
-                    }''')
+                    promos = prod_page.css('.bg-orange-6 .text-12::text, .bg-orange-6 .text-14::text, .border.rounded-12px .bg-white span[class*="text-blue"]::text').getall()
+                    
+                    if not promos:
+                        promos = page.evaluate('''() => {
+                            let items = [];
+                            document.querySelectorAll('.divb-right, .pr-item .divb-right, .border.rounded-12px .bg-white span.text-12').forEach(el => {
+                                let text = el.innerText.trim();
+                                text = text.replace(/\\n+/g, " - ");
+                                if (text && !items.includes(text)) items.push(text);
+                            });
+                            return items;
+                        }''')
                     if promos:
-                        promo_list = promos
+                        valid_promos = []
+                        for p in promos:
+                            p = p.strip()
+                            if p and p != "Chọn 1 trong các quà:" and "Đang chọn KM" not in p:
+                                valid_promos.append(p)
+                        promo_list = list(set(valid_promos))
                 except Exception:
                     pass
                 

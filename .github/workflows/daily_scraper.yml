@@ -146,6 +146,9 @@ jobs:
     name: Đồng bộ dữ liệu & Báo cáo
     needs: scrape # Đảm bảo job này chỉ chạy khi 5 máy ảo trên kia đã chạy xong
     runs-on: self-hosted # ĐỔI SANG SELF-HOSTED ĐỂ KẾT NỐI POSTGRESQL
+    defaults:
+      run:
+        shell: bash
     permissions:
       contents: write # Cấp quyền cho lệnh push lên Github
       actions: write # Cấp quyền kích hoạt lại workflow
@@ -156,12 +159,6 @@ jobs:
 
       - name: Xóa pending cũ nội bộ để cập nhật trạng thái mới nhất
         run: rm -f *_pending*.txt || true
-
-      - name: Cài đặt Python 3.11
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-          cache: 'pip'
 
       - name: Cài đặt thư viện Python
         run: |
@@ -203,7 +200,11 @@ jobs:
               git diff --quiet && git diff --staged --quiet || (git commit -m "Auto-update: Lưu trạng thái dang dở (Retry lần $count) [skip ci]" && git pull --rebase && git push)
               
               # Kích hoạt lại chính workflow này
-              gh workflow run daily_scraper.yml
+              if command -v gh >/dev/null 2>&1; then
+                gh workflow run daily_scraper.yml
+              else
+                echo "⚠️ GitHub CLI (gh) chưa được cài trên máy này, bỏ qua kích hoạt lại workflow."
+              fi
               exit 0 # Dừng nhánh này tại đây
             fi
           fi

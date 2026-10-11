@@ -225,6 +225,9 @@ jobs:
           # Đẩy dữ liệu vào PostgreSQL (LAN)
           python import_db.py
           
+          # Làm sạch dữ liệu và cập nhật bảng clean_laptop_data trong Database
+          python clean_data.py
+          
           # Commit file all (dùng git add -A để bắt cả file chunk đã bị xóa)
           git add -A
           git diff --quiet && git diff --staged --quiet || (git commit -m "Auto-update: Hoàn thành cào dữ liệu [skip ci]" && git pull --rebase && git push)

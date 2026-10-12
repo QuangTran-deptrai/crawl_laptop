@@ -146,9 +146,6 @@ jobs:
     name: Đồng bộ dữ liệu & Báo cáo
     needs: scrape # Đảm bảo job này chỉ chạy khi 5 máy ảo trên kia đã chạy xong
     runs-on: self-hosted # ĐỔI SANG SELF-HOSTED ĐỂ KẾT NỐI POSTGRESQL
-    defaults:
-      run:
-        shell: bash
     permissions:
       contents: write # Cấp quyền cho lệnh push lên Github
       actions: write # Cấp quyền kích hoạt lại workflow
@@ -158,76 +155,24 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Xóa pending cũ nội bộ để cập nhật trạng thái mới nhất
-        run: rm -f *_pending*.txt || true
+        run: python -c "import glob, os; [os.remove(f) for f in glob.glob('*_pending*.txt')]"
 
       - name: Cài đặt thư viện Python
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Tải 5 file Excel từ bộ nhớ tạm về máy ảo này
+      - name: Tải các file Excel từ bộ nhớ tạm về máy này
         uses: actions/download-artifact@v4
         with:
           pattern: excel-data-*
           merge-multiple: true # Gộp chung tất cả file xlsx vào cùng 1 thư mục hiện tại
 
-      - name: Kiểm tra trạng thái và Quyết định (Merge hay Retry)
+      - name: Đồng bộ dữ liệu, nạp Database và Báo cáo
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           GOOGLE_SHEETS_WEBHOOK_URL: ${{ secrets.GOOGLE_SHEETS_WEBHOOK_URL }}
-        run: |
-          git config --local user.email "github-actions[bot]@users.noreply.github.com"
-          git config --local user.name "github-actions[bot]"
-          
-          count=$(cat retry_count.txt 2>/dev/null || echo "0")
-          
-          if ls *_pending*.txt 1> /dev/null 2>&1; then
-            if [ "$count" -ge 3 ]; then
-              echo "⚠️ CẢNH BÁO: Đã Retry 3 lần nhưng vẫn còn file pending (có thể do bị chặn IP cứng). Dừng Retry để tránh lặp vô tận!"
-              echo "0" > retry_count.txt
-              # Tiếp tục chạy xuống khối gộp data bên dưới
-            else
-              count=$((count + 1))
-              echo "$count" > retry_count.txt
-              echo "Phát hiện còn file pending. Lưu Excel tạm và kích hoạt Retry lần $count..."
-              
-              git add -A *.xlsx || true
-              git add -A *_pending*.txt || true
-              git add retry_count.txt || true
-              git diff --quiet && git diff --staged --quiet || (git commit -m "Auto-update: Lưu trạng thái dang dở (Retry lần $count) [skip ci]" && git pull --rebase && git push)
-              
-              # Kích hoạt lại chính workflow này
-              if command -v gh >/dev/null 2>&1; then
-                gh workflow run daily_scraper.yml
-              else
-                echo "⚠️ GitHub CLI (gh) chưa được cài trên máy này, bỏ qua kích hoạt lại workflow."
-              fi
-              exit 0 # Dừng nhánh này tại đây
-            fi
-          fi
-          
-          echo "🎉 HOÀN THÀNH CÀO DỮ LIỆU!"
-          echo "Tiến hành gộp mảnh và đẩy lên Google Sheets..."
-          echo "0" > retry_count.txt
-            
-          # Xóa sạch pending trên Git (nếu có)
-          git rm *_pending*.txt --ignore-unmatch || true
-          
-          # Gộp
-          python chunk_merger.py
-          
-          # Đẩy lên GG Sheets
-          python sync_excel_to_sheets.py
-          
-          # Đẩy dữ liệu vào PostgreSQL (LAN)
-          python import_db.py
-          
-          # Làm sạch dữ liệu và cập nhật bảng clean_laptop_data trong Database
-          python clean_data.py
-          
-          # Commit file all (dùng git add -A để bắt cả file chunk đã bị xóa)
-          git add -A
-          git diff --quiet && git diff --staged --quiet || (git commit -m "Auto-update: Hoàn thành cào dữ liệu [skip ci]" && git pull --rebase && git push)
+        run: python post_sync.py

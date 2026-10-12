@@ -154,6 +154,10 @@ jobs:
       - name: Lấy mã nguồn
         uses: actions/checkout@v4
 
+      - name: Bổ sung Git vào PATH (Windows)
+        run: python -c "import os, glob; paths = [r'C:\Program Files\Git\cmd', r'C:\Users\PSD\actions-runner\externals\git\cmd'] + glob.glob(r'C:\Users\*\actions-runner\externals\git\cmd'); [open(os.environ['GITHUB_PATH'], 'a').write(p + '\n') for p in paths if os.path.exists(p)]"
+        continue-on-error: true
+
       - name: Xóa pending cũ nội bộ để cập nhật trạng thái mới nhất
         run: python -c "import glob, os; [os.remove(f) for f in glob.glob('*_pending*.txt')]"
 

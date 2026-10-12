@@ -2,10 +2,54 @@ import os
 import glob
 import subprocess
 import sys
+import shutil
 import httpx
+
+def get_git_executable():
+    """Tự động tìm kiếm đường dẫn git.exe chuẩn xác trên Windows/Linux"""
+    # 1. Nếu git đã có sẵn trong PATH
+    if shutil.which("git"):
+        return "git"
+
+    # 2. Danh sách các đường dẫn cài đặt Git phổ biến trên Windows
+    candidates = [
+        r"C:\Program Files\Git\cmd\git.exe",
+        r"C:\Program Files\Git\bin\git.exe",
+        r"C:\Program Files (x86)\Git\cmd\git.exe",
+        r"C:\Program Files (x86)\Git\bin\git.exe",
+        os.path.expandvars(r"%LOCALAPPDATA%\Programs\Git\cmd\git.exe"),
+        os.path.expandvars(r"%USERPROFILE%\AppData\Local\Programs\Git\cmd\git.exe"),
+        r"C:\Users\PSD\actions-runner\externals\git\cmd\git.exe",
+        r"C:\Users\PSD\actions-runner\externals\git\bin\git.exe",
+    ]
+    
+    # 3. Quét động thư mục actions-runner nếu đang chạy trên GitHub Runner
+    runner_externals = glob.glob(r"C:\Users\*\actions-runner\externals\git\cmd\git.exe")
+    candidates.extend(runner_externals)
+    
+    # 4. Quét tương đối từ thư mục runner workspace
+    ws = os.getenv("GITHUB_WORKSPACE", os.getcwd())
+    relative_git = os.path.abspath(os.path.join(ws, "..", "..", "..", "externals", "git", "cmd", "git.exe"))
+    candidates.append(relative_git)
+
+    for p in candidates:
+        if os.path.isfile(p):
+            git_dir = os.path.dirname(p)
+            print(f"🔧 Đã tìm thấy Git tại: {p}. Bổ sung vào PATH...")
+            os.environ["PATH"] = git_dir + os.pathsep + os.environ.get("PATH", "")
+            return f'"{p}"'
+            
+    print("⚠️ Không tìm thấy đường dẫn Git cụ thể, giữ mặc định 'git'")
+    return "git"
+
+GIT_CMD = get_git_executable()
 
 def run_command(cmd, ignore_error=True):
     """Thực thi câu lệnh hệ thống an toàn trên cả Windows và Linux"""
+    # Tự động thay thế tiền tố 'git ' bằng đường dẫn Git thực tế nếu có
+    if cmd.startswith("git "):
+        cmd = f"{GIT_CMD} " + cmd[4:]
+        
     print(f"👉 Chạy lệnh: {cmd}")
     res = subprocess.run(cmd, shell=True, text=True, capture_output=True)
     if res.stdout:
@@ -15,6 +59,12 @@ def run_command(cmd, ignore_error=True):
     if not ignore_error and res.returncode != 0:
         sys.exit(res.returncode)
     return res.returncode
+
+def git_has_changes():
+    """Kiểm tra xem có thay đổi nào cần commit hay không"""
+    cmd = f"{GIT_CMD} diff --quiet && {GIT_CMD} diff --staged --quiet"
+    res = subprocess.run(cmd, shell=True, capture_output=True)
+    return res.returncode != 0
 
 def trigger_github_workflow():
     """Kích hoạt lại workflow qua gh CLI hoặc trực tiếp qua GitHub REST API"""
@@ -88,8 +138,7 @@ def main():
             run_command(f"git add {retry_file}")
             
             # Commit nếu có thay đổi
-            diff_res = subprocess.run("git diff --quiet && git diff --staged --quiet", shell=True)
-            if diff_res.returncode != 0:
+            if git_has_changes():
                 run_command(f'git commit -m "Auto-update: Lưu trạng thái dang dở (Retry lần {count}) [skip ci]"')
                 run_command("git pull --rebase")
                 run_command("git push")
@@ -129,8 +178,7 @@ def main():
     # 7. Commit toàn bộ file Excel đã gộp lên GitHub
     print("\n☁️ BƯỚC 5: COMMIT VÀ ĐẨY LÊN GITHUB REPOSITORY...")
     run_command("git add -A")
-    diff_check = subprocess.run("git diff --quiet && git diff --staged --quiet", shell=True)
-    if diff_check.returncode != 0:
+    if git_has_changes():
         run_command('git commit -m "Auto-update: Hoàn thành cào và cập nhật dữ liệu mới [skip ci]"')
         run_command("git pull --rebase")
         run_command("git push")

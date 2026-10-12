@@ -60,6 +60,35 @@ def run_command(cmd, ignore_error=True):
         sys.exit(res.returncode)
     return res.returncode
 
+def ensure_git_repo():
+    """Đảm bảo thư mục làm việc là một Git repo hợp lệ và tránh lỗi safe.directory"""
+    token = os.getenv("GH_TOKEN")
+    repo = os.getenv("GITHUB_REPOSITORY")
+
+    # 1. Tránh lỗi 'dubious ownership' của Git trên Windows
+    run_command("git config --global --add safe.directory *")
+
+    # 2. Nếu chưa có thư mục .git (do checkout dạng zip/archive khi chưa có git trong PATH)
+    if not os.path.exists(".git"):
+        print("⚠️ Không tìm thấy thư mục .git! Đang tự động khởi tạo lại Git repository...")
+        run_command("git init")
+        run_command('git config --local user.email "github-actions[bot]@users.noreply.github.com"')
+        run_command('git config --local user.name "github-actions[bot]"')
+        
+        if repo and token:
+            remote_url = f"https://x-access-token:{token}@github.com/{repo}.git"
+            run_command(f"git remote add origin {remote_url}")
+            run_command("git fetch origin main")
+            run_command("git reset --soft origin/main")
+            print("✅ Đã kết nối lại Git repository với origin/main thành công!")
+        elif repo:
+            run_command(f"git remote add origin https://github.com/{repo}.git")
+    else:
+        # Nếu đã có .git, cấu hình remote URL kèm token để push mượt mà
+        if repo and token:
+            remote_url = f"https://x-access-token:{token}@github.com/{repo}.git"
+            run_command(f"git remote set-url origin {remote_url}")
+
 def git_has_changes():
     """Kiểm tra xem có thay đổi nào cần commit hay không"""
     cmd = f"{GIT_CMD} diff --quiet && {GIT_CMD} diff --staged --quiet"
@@ -103,11 +132,14 @@ def main():
     print("🚀 BẮT ĐẦU QUY TRÌNH ĐỒNG BỘ DỮ LIỆU SAU KHI CÀO")
     print("=" * 60)
     
-    # 1. Cấu hình thông tin Git
+    # 1. Đảm bảo Git repo hợp lệ
+    ensure_git_repo()
+    
+    # 2. Cấu hình thông tin Git
     run_command('git config --local user.email "github-actions[bot]@users.noreply.github.com"')
     run_command('git config --local user.name "github-actions[bot]"')
     
-    # 2. Kiểm tra số lần Retry
+    # 3. Kiểm tra số lần Retry
     retry_file = "retry_count.txt"
     count = 0
     if os.path.exists(retry_file):
@@ -159,23 +191,23 @@ def main():
         except Exception:
             pass
 
-    # 3. Gộp các mảnh Excel
+    # 4. Gộp các mảnh Excel
     print("\n📦 BƯỚC 1: GỘP MẢNH EXCEL (chunk_merger.py)...")
     run_command(f'"{sys.executable}" chunk_merger.py')
 
-    # 4. Đẩy lên Google Sheets
+    # 5. Đẩy lên Google Sheets
     print("\n📊 BƯỚC 2: ĐẨY LÊN GOOGLE SHEETS & BÁO CÁO TELEGRAM (sync_excel_to_sheets.py)...")
     run_command(f'"{sys.executable}" sync_excel_to_sheets.py')
 
-    # 5. Đẩy vào PostgreSQL (bảng raw_laptop_data)
+    # 6. Đẩy vào PostgreSQL (bảng raw_laptop_data)
     print("\n💾 BƯỚC 3: ĐẨY VÀO POSTGRESQL (import_db.py)...")
     run_command(f'"{sys.executable}" import_db.py')
 
-    # 6. Làm sạch và bóc tách thông số vào PostgreSQL (bảng clean_laptop_data)
+    # 7. Làm sạch và bóc tách thông số vào PostgreSQL (bảng clean_laptop_data)
     print("\n🧹 BƯỚC 4: LÀM SẠCH VÀ CHUẨN HÓA DỮ LIỆU (clean_data.py)...")
     run_command(f'"{sys.executable}" clean_data.py')
 
-    # 7. Commit toàn bộ file Excel đã gộp lên GitHub
+    # 8. Commit toàn bộ file Excel đã gộp lên GitHub
     print("\n☁️ BƯỚC 5: COMMIT VÀ ĐẨY LÊN GITHUB REPOSITORY...")
     run_command("git add -A")
     if git_has_changes():

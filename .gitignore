@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+*$py.class
+*.log
+venv/
+.env
+*_pending*.txt
+tgdd_debug.*
+tgdd_sample.*
+fpt_detail.html
+fpt_specs_out.txt

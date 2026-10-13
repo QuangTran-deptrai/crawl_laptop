@@ -1,0 +1,26 @@
+name: Import Historical Laptop Data to PostgreSQL
+
+on:
+  workflow_dispatch:
+
+jobs:
+  import_history:
+    name: Import Old Data to Database
+    runs-on: self-hosted
+    steps:
+      - name: Bổ sung Git vào PATH (Windows)
+        run: python -c "import os, glob; paths = [r'C:\Program Files\Git\cmd', r'C:\Users\PSD\actions-runner\externals\git\cmd'] + glob.glob(r'C:\Users\*\actions-runner\externals\git\cmd'); [open(os.environ['GITHUB_PATH'], 'a').write(p + '\n') for p in paths if os.path.exists(p)]"
+        continue-on-error: true
+
+      - name: Lấy mã nguồn
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Cài đặt thư viện Python
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Nạp dữ liệu cũ vào PostgreSQL và Tự động làm sạch
+        run: python import_old_data.py --host localhost

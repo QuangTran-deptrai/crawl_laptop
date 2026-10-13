@@ -59,16 +59,26 @@ def import_to_postgres():
         'khuyến_mãi': 'khuyen_mai',
         'link_sản_phẩm': 'link_san_pham',
         'url': 'link_san_pham',
-        'ngày_cập_nhật_(sitemap)': 'ngay_cap_nhat_sitemap',
         'ngày_giờ_crawl': 'ngay_gio_crawl',
         'ngày_thu_thập': 'ngay_gio_crawl'
     }
     
-    # Chỉ giữ lại các cột có trong database
     final_df = final_df.rename(columns=column_mapping)
     final_df = final_df.loc[:, ~final_df.columns.duplicated()]
-    available_cols = [col for col in final_df.columns if col in column_mapping.values()]
-    final_df = final_df[available_cols]
+
+    def clean_price(val):
+        if pd.isna(val):
+            return None
+        if isinstance(val, (int, float)):
+            return int(val)
+        val_str = str(val).strip()
+        digits = re.sub(r'[^\d]', '', val_str)
+        return int(digits) if digits else None
+
+    if 'gia_hien_tai' in final_df.columns:
+        final_df['gia_hien_tai'] = final_df['gia_hien_tai'].apply(clean_price)
+    if 'gia_goc' in final_df.columns:
+        final_df['gia_goc'] = final_df['gia_goc'].apply(clean_price)
 
     # Đảm bảo cột ngày giờ crawl luôn có giá trị (nếu rỗng thì lấy thời điểm hiện tại)
     if 'ngay_gio_crawl' not in final_df.columns:
@@ -105,10 +115,15 @@ def import_to_postgres():
         # Chuỗi kết nối SQLAlchemy
         engine = create_engine(f'postgresql+psycopg2://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}')
         
-        # Cập nhật: Trước khi chèn, có thể bạn muốn xóa data cũ hoặc append data mới.
-        # Ở đây dùng 'append' để giữ lịch sử, hoặc 'replace' nếu bạn muốn làm mới mỗi ngày.
+        # Chỉ giữ lại các cột thực tế có trong bảng raw_laptop_data trong Database để tránh lỗi UndefinedColumn
+        try:
+            existing_cols = pd.read_sql("SELECT * FROM raw_laptop_data LIMIT 0", engine).columns.tolist()
+            final_df = final_df[[c for c in final_df.columns if c in existing_cols]]
+        except Exception as e_col:
+            print(f"ℹ️ Không lấy được schema bảng: {e_col}")
+
         print(f" Đang ghi {len(final_df)} dòng vào database {DB_NAME}...")
-        final_df.to_sql('raw_laptop_data', engine, if_exists='append', index=False)
+        final_df.to_sql('raw_laptop_data', engine, if_exists='append', index=False, chunksize=1000)
         print("✅ Ghi dữ liệu thành công vào PostgreSQL!")
         
     except Exception as e:

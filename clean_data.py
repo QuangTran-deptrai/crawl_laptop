@@ -6,6 +6,12 @@ import sys
 import glob
 from sqlalchemy import create_engine
 
+# Fix lỗi mã hóa font / emoji trên Windows console (cp1252 / cp1258)
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+if hasattr(sys.stderr, 'reconfigure'):
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+
 # ==========================================================
 # CẤU HÌNH DATABASE
 # ==========================================================

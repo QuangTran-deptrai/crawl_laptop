@@ -6,6 +6,12 @@ import argparse
 from sqlalchemy import create_engine
 import re
 
+# Fix lỗi mã hóa font / emoji trên Windows console (cp1252 / cp1258)
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+if hasattr(sys.stderr, 'reconfigure'):
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+
 # Import bộ xử lý làm sạch từ clean_data nếu muốn tạo luôn bảng sạch
 try:
     from clean_data import clean_dataframe

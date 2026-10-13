@@ -3,6 +3,10 @@ name: Import Historical Laptop Data to PostgreSQL
 on:
   workflow_dispatch:
 
+env:
+  PYTHONUNBUFFERED: "1"
+  PYTHONIOENCODING: "utf-8"
+
 jobs:
   import_history:
     name: Import Old Data to Database
@@ -23,4 +27,4 @@ jobs:
           pip install -r requirements.txt
 
       - name: Nạp dữ liệu cũ vào PostgreSQL và Tự động làm sạch
-        run: python import_old_data.py --host localhost
+        run: python -X utf8 import_old_data.py --host localhost

@@ -67,6 +67,12 @@ def import_old_data(excel_path="data laptop.xlsx", db_host="localhost", db_port=
         'ngày_thu_thập': 'ngay_gio_crawl'
     }
 
+    target_cols = [
+        'nguon', 'ten_san_pham', 'cau_hinh_chi_tiet', 
+        'gia_hien_tai', 'gia_goc', 'giam_gia', 'khuyen_mai', 
+        'link_san_pham', 'ngay_gio_crawl'
+    ]
+
     for sheet in xls.sheet_names:
         # Bỏ qua sheet tính toán Power Query cũ
         if sheet.lower() in ['dataclean', 'sheet1', 'summary']:
@@ -79,17 +85,34 @@ def import_old_data(excel_path="data laptop.xlsx", db_host="localhost", db_port=
 
         # Chuẩn hóa tên cột
         df.columns = [str(c).strip().lower().replace(" ", "_") for c in df.columns]
-        df = df.rename(columns=column_mapping)
         
-        # Gán nguồn nếu chưa có
-        if 'nguon' not in df.columns:
-            df['nguon'] = sheet.upper()
+        # Xử lý gộp cột 'quà_tặng_/_ghi_chú' vào 'khuyến_mãi' để tránh trùng lặp cột khi đổi tên
+        if 'quà_tặng_/_ghi_chú' in df.columns:
+            if 'khuyến_mãi' in df.columns:
+                df['khuyến_mãi'] = df['khuyến_mãi'].fillna('').astype(str) + ' | ' + df['quà_tặng_/_ghi_chú'].fillna('').astype(str)
+                df['khuyến_mãi'] = df['khuyến_mãi'].str.strip(' |')
+            else:
+                df['khuyến_mãi'] = df['quà_tặng_/_ghi_chú']
+            df = df.drop(columns=['quà_tặng_/_ghi_chú'])
+
+        df = df.rename(columns=column_mapping)
+        # Loại bỏ bất kỳ cột trùng tên nào còn sót lại
+        df = df.loc[:, ~df.columns.duplicated()]
+        
+        # Gán nguồn
+        df['nguon'] = sheet.upper()
 
         # Làm sạch giá
         if 'gia_hien_tai' in df.columns:
             df['gia_hien_tai'] = df['gia_hien_tai'].apply(clean_price)
         if 'gia_goc' in df.columns:
             df['gia_goc'] = df['gia_goc'].apply(clean_price)
+
+        # Đảm bảo đủ các cột target chuẩn hóa trước khi append
+        for col in target_cols:
+            if col not in df.columns:
+                df[col] = None
+        df = df[target_cols]
 
         all_dfs.append(df)
         print(f"   -> Đã đọc {len(df)} sản phẩm từ {sheet}")
@@ -99,17 +122,6 @@ def import_old_data(excel_path="data laptop.xlsx", db_host="localhost", db_port=
         return
 
     raw_df = pd.concat(all_dfs, ignore_index=True)
-    
-    # Giữ lại các cột chuẩn cho bảng raw_laptop_data
-    target_cols = [
-        'nguon', 'ten_san_pham', 'cau_hinh_chi_tiet', 
-        'gia_hien_tai', 'gia_goc', 'giam_gia', 'khuyen_mai', 
-        'link_san_pham', 'ngay_gio_crawl'
-    ]
-    for col in target_cols:
-        if col not in raw_df.columns:
-            raw_df[col] = None
-    raw_df = raw_df[target_cols]
 
     print(f"\n📊 Tổng cộng {len(raw_df)} dòng dữ liệu thô sẵn sàng đẩy vào database.")
 

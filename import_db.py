@@ -61,12 +61,29 @@ def import_to_postgres():
 
     # 3. Kết nối PostgreSQL và Ghi dữ liệu
     try:
+        from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
+        
         # Thay đổi user/password cho phù hợp với Máy B của bạn
         DB_USER = "postgres"
         DB_PASS = "123456" # <--- THAY ĐỔI MẬT KHẨU CỦA BẠN
         DB_HOST = "localhost"
         DB_PORT = "5432"
         DB_NAME = "laptop_db"
+
+        # Tự động tạo database nếu chưa có
+        try:
+            init_conn = psycopg2.connect(dbname="postgres", user=DB_USER, password=DB_PASS, host=DB_HOST, port=DB_PORT)
+            init_conn.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
+            cur = init_conn.cursor()
+            cur.execute(f"SELECT 1 FROM pg_database WHERE datname = '{DB_NAME}'")
+            if not cur.fetchone():
+                print(f"🛠️ Đang tự động tạo mới database '{DB_NAME}'...")
+                cur.execute(f'CREATE DATABASE "{DB_NAME}"')
+                print(f"✅ Đã tạo database '{DB_NAME}' thành công!")
+            cur.close()
+            init_conn.close()
+        except Exception as err:
+            print(f"⚠️ Kiểm tra database: {err}")
 
         # Chuỗi kết nối SQLAlchemy
         engine = create_engine(f'postgresql+psycopg2://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}')

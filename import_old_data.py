@@ -4,6 +4,8 @@ import os
 import sys
 import argparse
 from sqlalchemy import create_engine
+import psycopg2
+from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
 import re
 
 # Fix lỗi mã hóa font / emoji trên Windows console (cp1252 / cp1258)
@@ -17,6 +19,29 @@ try:
     from clean_data import clean_dataframe
 except ImportError:
     clean_dataframe = None
+
+def ensure_database_exists(db_user, db_pass, db_host, db_port, db_name):
+    """Tự động tạo database nếu chưa tồn tại"""
+    try:
+        conn = psycopg2.connect(
+            dbname="postgres",
+            user=db_user,
+            password=db_pass,
+            host=db_host,
+            port=db_port
+        )
+        conn.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
+        cur = conn.cursor()
+        cur.execute(f"SELECT 1 FROM pg_database WHERE datname = '{db_name}'")
+        exists = cur.fetchone()
+        if not exists:
+            print(f"🛠️ Database '{db_name}' chưa tồn tại. Đang tự động tạo mới...")
+            cur.execute(f'CREATE DATABASE "{db_name}"')
+            print(f"✅ Đã tạo thành công database '{db_name}'!")
+        cur.close()
+        conn.close()
+    except Exception as e:
+        print(f"⚠️ Kiểm tra tạo database: {e}")
 
 def clean_price(val):
     if pd.isna(val):
@@ -124,6 +149,9 @@ def import_old_data(excel_path="data laptop.xlsx", db_host="localhost", db_port=
     raw_df = pd.concat(all_dfs, ignore_index=True)
 
     print(f"\n📊 Tổng cộng {len(raw_df)} dòng dữ liệu thô sẵn sàng đẩy vào database.")
+
+    # Đảm bảo database tồn tại
+    ensure_database_exists(db_user, db_pass, db_host, db_port, db_name)
 
     # Kết nối Database
     conn_str = f'postgresql+psycopg2://{db_user}:{db_pass}@{db_host}:{db_port}/{db_name}'

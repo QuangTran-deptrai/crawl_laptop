@@ -51,7 +51,7 @@ def run_command(cmd, ignore_error=True):
         cmd = f"{GIT_CMD} " + cmd[4:]
         
     print(f"👉 Chạy lệnh: {cmd}")
-    res = subprocess.run(cmd, shell=True, text=True, capture_output=True)
+    res = subprocess.run(cmd, shell=True, text=True, encoding='utf-8', errors='replace', capture_output=True)
     if res.stdout:
         print(res.stdout.strip())
     if res.stderr and res.returncode != 0:
@@ -209,10 +209,10 @@ def main():
 
     # 8. Commit toàn bộ file Excel đã gộp lên GitHub
     print("\n☁️ BƯỚC 5: COMMIT VÀ ĐẨY LÊN GITHUB REPOSITORY...")
-    run_command("git add -A")
+    run_command("git add laptop_*_all.xlsx laptop_clean_snapshot.xlsx retry_count.txt")
     if git_has_changes():
         run_command('git commit -m "Auto-update: Hoàn thành cào và cập nhật dữ liệu mới [skip ci]"')
-        run_command("git pull --rebase")
+        run_command("git pull --rebase -X theirs")
         run_command("git push")
         print("✅ Đã push các file dữ liệu mới lên GitHub thành công!")
     else:

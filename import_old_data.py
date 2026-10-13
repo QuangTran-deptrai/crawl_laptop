@@ -159,17 +159,17 @@ def import_old_data(excel_path="data laptop.xlsx", db_host="localhost", db_port=
         engine = create_engine(conn_str)
         print(f"🔌 Đang kết nối tới PostgreSQL ({db_host}:{db_port})...")
         
-        # 1. Đẩy vào bảng raw_laptop_data
-        print(f"💾 Đang nạp vào bảng 'raw_laptop_data'...")
-        raw_df.to_sql('raw_laptop_data', engine, if_exists='append', index=False)
+        # 1. Đẩy vào bảng raw_laptop_data (dùng replace để làm mới dữ liệu đầy đủ 295k dòng)
+        print(f"💾 Đang nạp vào bảng 'raw_laptop_data' (theo từng lô 5.000 dòng)...")
+        raw_df.to_sql('raw_laptop_data', engine, if_exists='replace', index=False, chunksize=5000)
         print(f"✅ ĐÃ NẠP THÀNH CÔNG {len(raw_df)} DÒNG VÀO BẢNG raw_laptop_data!")
 
         # 2. Tự động bóc tách và nạp luôn vào bảng clean_laptop_data nếu auto_clean=True
         if auto_clean and clean_dataframe:
             print("\n🧹 Đang tự động làm sạch và bóc tách thông số (CPU, RAM, GPU, Màn hình)...")
             clean_df = clean_dataframe(raw_df)
-            print(f"💾 Đang nạp {len(clean_df)} dòng vào bảng 'clean_laptop_data'...")
-            clean_df.to_sql('clean_laptop_data', engine, if_exists='replace', index=False)
+            print(f"💾 Đang nạp {len(clean_df)} dòng vào bảng 'clean_laptop_data' (lô 5.000 dòng)...")
+            clean_df.to_sql('clean_laptop_data', engine, if_exists='replace', index=False, chunksize=5000)
             print(f"🎉 ĐÃ CẬP NHẬT THÀNH CÔNG BẢNG clean_laptop_data! Sẵn sàng cho Dashboard!")
 
     except Exception as e:

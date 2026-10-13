@@ -24,6 +24,15 @@ def import_to_postgres():
             # Chuẩn hóa tên cột để khớp với SQL Table (viết thường, thay khoảng trắng bằng gạch dưới)
             df.columns = [str(col).strip().lower().replace(" ", "_") for col in df.columns]
             
+            # Gộp quà tặng vào khuyến mãi nếu có
+            if 'quà_tặng_/_ghi_chú' in df.columns:
+                if 'khuyến_mãi' in df.columns:
+                    df['khuyến_mãi'] = df['khuyến_mãi'].fillna('').astype(str) + ' | ' + df['quà_tặng_/_ghi_chú'].fillna('').astype(str)
+                    df['khuyến_mãi'] = df['khuyến_mãi'].str.strip(' |')
+                else:
+                    df['khuyến_mãi'] = df['quà_tặng_/_ghi_chú']
+                df = df.drop(columns=['quà_tặng_/_ghi_chú'])
+            
             # Đảm bảo có cột 'nguon'
             if 'nguon' not in df.columns:
                 df['nguon'] = store_name
@@ -49,15 +58,23 @@ def import_to_postgres():
         'giảm_giá': 'giam_gia',
         'khuyến_mãi': 'khuyen_mai',
         'link_sản_phẩm': 'link_san_pham',
-        'url': 'link_san_pham', # Đề phòng một số web đặt tên là URL
+        'url': 'link_san_pham',
         'ngày_cập_nhật_(sitemap)': 'ngay_cap_nhat_sitemap',
-        'ngày_giờ_crawl': 'ngay_gio_crawl'
+        'ngày_giờ_crawl': 'ngay_gio_crawl',
+        'ngày_thu_thập': 'ngay_gio_crawl'
     }
     
     # Chỉ giữ lại các cột có trong database
     final_df = final_df.rename(columns=column_mapping)
+    final_df = final_df.loc[:, ~final_df.columns.duplicated()]
     available_cols = [col for col in final_df.columns if col in column_mapping.values()]
     final_df = final_df[available_cols]
+
+    # Đảm bảo cột ngày giờ crawl luôn có giá trị (nếu rỗng thì lấy thời điểm hiện tại)
+    if 'ngay_gio_crawl' not in final_df.columns:
+        final_df['ngay_gio_crawl'] = pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')
+    else:
+        final_df['ngay_gio_crawl'] = final_df['ngay_gio_crawl'].fillna(pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S'))
 
     # 3. Kết nối PostgreSQL và Ghi dữ liệu
     try:

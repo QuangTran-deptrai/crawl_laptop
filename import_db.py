@@ -88,6 +88,23 @@ def import_to_postgres():
     if 'gia_goc' in final_df.columns:
         final_df['gia_goc'] = final_df['gia_goc'].apply(clean_price)
 
+    # Clean cột giảm giá: bỏ ký tự % và chuyển sang số
+    def clean_discount(val):
+        if pd.isna(val):
+            return None
+        if isinstance(val, (int, float)):
+            return float(val)
+        val_str = str(val).strip().replace('%', '').replace(',', '.')
+        try:
+            return float(val_str)
+        except ValueError:
+            # Thử lấy số từ chuỗi
+            digits = re.sub(r'[^\d.\-]', '', val_str)
+            return float(digits) if digits else None
+
+    if 'giam_gia' in final_df.columns:
+        final_df['giam_gia'] = final_df['giam_gia'].apply(clean_discount)
+
     # Đảm bảo cột ngày giờ crawl luôn có giá trị (nếu rỗng thì lấy thời điểm hiện tại)
     if 'ngay_gio_crawl' not in final_df.columns:
         final_df['ngay_gio_crawl'] = pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')

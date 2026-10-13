@@ -1,8 +1,16 @@
 import pandas as pd
 import glob
 import os
+import re
+import sys
 from sqlalchemy import create_engine
 import psycopg2
+
+# Fix encoding cho Windows console
+try:
+    sys.stdout.reconfigure(encoding='utf-8')
+except Exception:
+    pass
 
 def import_to_postgres():
     # 1. Thu thập tất cả các file Excel đã gộp từ chunk_merger.py
@@ -118,9 +126,19 @@ def import_to_postgres():
         # Chỉ giữ lại các cột thực tế có trong bảng raw_laptop_data trong Database để tránh lỗi UndefinedColumn
         try:
             existing_cols = pd.read_sql("SELECT * FROM raw_laptop_data LIMIT 0", engine).columns.tolist()
-            final_df = final_df[[c for c in final_df.columns if c in existing_cols]]
+            print(f"[DEBUG] Cot trong DB: {existing_cols}")
+            print(f"[DEBUG] Cot trong DataFrame: {final_df.columns.tolist()}")
+            cols_to_keep = [c for c in final_df.columns if c in existing_cols]
+            cols_dropped = [c for c in final_df.columns if c not in existing_cols]
+            if cols_dropped:
+                print(f"[DEBUG] Bo cac cot khong co trong DB: {cols_dropped}")
+            final_df = final_df[cols_to_keep]
+            print(f"[DEBUG] Cot cuoi cung: {final_df.columns.tolist()}")
         except Exception as e_col:
-            print(f"ℹ️ Không lấy được schema bảng: {e_col}")
+            print(f"Khong lay duoc schema bang: {e_col}")
+            # Fallback: bỏ tất cả cột không nằm trong danh sách chuẩn
+            standard_cols = ['ten_san_pham', 'gia_hien_tai', 'gia_goc', 'giam_gia', 'khuyen_mai', 'cau_hinh_chi_tiet', 'link_san_pham', 'ngay_gio_crawl', 'nguon']
+            final_df = final_df[[c for c in final_df.columns if c in standard_cols]]
 
         print(f" Đang ghi {len(final_df)} dòng vào database {DB_NAME}...")
         final_df.to_sql('raw_laptop_data', engine, if_exists='append', index=False, chunksize=1000)

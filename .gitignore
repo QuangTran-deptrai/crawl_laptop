@@ -9,3 +9,4 @@ tgdd_debug.*
 tgdd_sample.*
 fpt_detail.html
 fpt_specs_out.txt
+*.sql

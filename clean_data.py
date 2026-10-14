@@ -387,6 +387,15 @@ def clean_dataframe(df):
         gia_hien_tai = clean_price(raw_price)
         gia_goc = clean_price(raw_orig_price)
         
+        # Xử lý ngoại lệ giá gốc < giá hiện tại
+        if gia_goc and gia_hien_tai and gia_goc < gia_hien_tai:
+            if nguon == 'XGEAR' and gia_goc >= 5_000_000:
+                # XGEAR trước đây bị đảo ngược giữa giá gốc và giá bán
+                gia_hien_tai, gia_goc = gia_goc, gia_hien_tai
+            else:
+                # Bắt nhầm giá quà tặng / voucher / giá ưu đãi thanh toán -> bỏ giá gốc
+                gia_goc = None
+
         # % Giảm giá
         phan_tram_giam = 0.0
         if gia_goc and gia_hien_tai and gia_goc > gia_hien_tai:

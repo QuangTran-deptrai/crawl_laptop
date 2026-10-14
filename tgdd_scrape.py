@@ -300,7 +300,16 @@ def crawl_tgdd_to_excel(chunk=1, total_chunks=1, get_links_only=False):
                 current_price = prod_page.css('span.text-24.font-700.text-red-5::text, .active[data-pack] span b::text, .active[data-id] span b::text, .box-price-present::text, .price::text').get(default="").strip()
                 current_price = current_price.replace("*", "").strip()
                     
-                original_price = prod_page.css('del.text-gray-5::text, del::text, .active[data-pack] span em::text, .active[data-id] span em::text, .box-price-old::text, .price-old::text').get(default="").strip()
+                original_price = prod_page.css('.box-price-old::text, .price-old::text, del.text-gray-5::text, .active[data-pack] span em::text, .active[data-id] span em::text').get(default="").strip()
+                
+                # Sanity check: giá gốc không thể nhỏ hơn giá hiện tại (tránh bắt nhầm giá quà tặng/voucher)
+                try:
+                    c_val = int(re.sub(r'[^\d]', '', current_price)) if current_price else 0
+                    o_val = int(re.sub(r'[^\d]', '', original_price)) if original_price else 0
+                    if o_val > 0 and c_val > 0 and o_val < c_val:
+                        original_price = ""
+                except Exception:
+                    pass
                     
                 discount_percent = prod_page.css('del + span.text-red-5::text, .percent::text, .box-price-percent::text').get(default="").strip()
                 discount_percent = calculate_discount(current_price, original_price, discount_percent)

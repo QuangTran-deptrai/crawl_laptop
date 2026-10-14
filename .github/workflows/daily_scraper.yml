@@ -1,9 +1,8 @@
 name: Daily Laptop Data Scraper (Parallel)
 
 on:
-  schedule:
-    - cron: '15 0 * * *' # 7h15 sáng VN (Tránh kẹt xe giờ cao điểm của Github)
   workflow_dispatch:
+
 
 env:
   PYTHONUNBUFFERED: "1" # Ép Python in log ra ngay lập tức để không bị tưởng là treo

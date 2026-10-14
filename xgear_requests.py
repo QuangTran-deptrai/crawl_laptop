@@ -114,6 +114,10 @@ def parse_item(item):
     except:
         price, price_before = 0, 0
 
+    # Fix: Nếu giá gốc thấp hơn giá bán → swap lại cho đúng
+    if price_before > 0 and price > 0 and price_before < price:
+        price, price_before = price_before, price
+
     handle = item.get("handle", "")
     link = f"https://xgear.net/products/{handle}" if handle else "N/A"
     

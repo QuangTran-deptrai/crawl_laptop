@@ -164,14 +164,23 @@ def main():
             with open(retry_file, "w", encoding="utf-8") as f:
                 f.write(str(count))
             print(f"🔄 Lưu Excel tạm và kích hoạt Retry lần {count}...")
-            
+
+            # Gộp ngay các kênh đã cào xong (không còn pending) để file _all.xlsx
+            # của kênh đó được cập nhật luôn, không phải chờ kênh lỗi retry xong.
+            all_stores = ["fptshop", "phongvu", "tgdd", "cellphones", "gearvn", "xgear"]
+            pending_stores = {os.path.basename(p).split("_pending")[0] for p in pending_files}
+            done_stores = [s for s in all_stores if s not in pending_stores]
+            print(f"   Kênh còn pending: {sorted(pending_stores)} | Kênh đã xong, gộp ngay: {done_stores}")
+            if done_stores:
+                run_command(f'"{sys.executable}" chunk_merger.py --stores {",".join(done_stores)}')
+
             run_command("git add -A *.xlsx")
             run_command("git add -A *_pending*.txt")
             run_command(f"git add {retry_file}")
             
             # Commit nếu có thay đổi
             if git_has_changes():
-                run_command(f'git commit -m "Auto-update: Lưu trạng thái dang dở (Retry lần {count}) [skip ci]"')
+                run_command(f'git commit -m "Auto-update: Cập nhật kênh đã xong, lưu trạng thái dang dở (Retry lần {count}) [skip ci]"')
                 run_command("git pull --rebase")
                 run_command("git push")
                 

@@ -14,9 +14,11 @@ def clean_price(val):
         return int(digits)
     return val
 
-def merge_chunks():
-    # Các trang web cần gộp
-    stores = ["fptshop", "phongvu", "tgdd", "cellphones", "gearvn", "xgear"]
+ALL_STORES = ["fptshop", "phongvu", "tgdd", "cellphones", "gearvn", "xgear"]
+
+def merge_chunks(stores=None):
+    # Các trang web cần gộp (mặc định: tất cả)
+    stores = stores or ALL_STORES
     
     for store in stores:
         print(f"=== Đang gộp dữ liệu cho {store.upper()} ===")
@@ -104,4 +106,9 @@ def merge_chunks():
         print("-" * 40)
 
 if __name__ == "__main__":
-    merge_chunks()
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--stores", default="", help="Danh sách store cần gộp, cách nhau dấu phẩy. Bỏ trống = tất cả")
+    args = parser.parse_args()
+    selected = [x.strip() for x in args.stores.split(",") if x.strip()]
+    merge_chunks(selected or None)
